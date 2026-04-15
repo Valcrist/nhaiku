@@ -1,0 +1,5 @@
+git+https://github.com/Valcrist/toolbox.git
+sqlalchemy
+sqlalchemy_utils
+psycopg2-binary
+pydantic[email]
