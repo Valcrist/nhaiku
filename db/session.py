@@ -1,23 +1,15 @@
-from mbdb.common import engine, Base, sessionmaker, scoped_session
+from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+from db.common import engine
 
 
-Session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-ScopedSession = scoped_session(Session)
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    autocommit=False,
+    autoflush=False,
+    expire_on_commit=False,
+)
 
 
-def get_session():
-    """Generator for a non-scoped SQLAlchemy session."""
-    session = Session()
-    try:
+async def get_session() -> AsyncSession:
+    async with AsyncSessionLocal() as session:
         yield session
-    finally:
-        session.close()
-
-
-def get_scoped_session():
-    """Generator for a thread-local SQLAlchemy session."""
-    session = ScopedSession()
-    try:
-        yield session
-    finally:
-        ScopedSession.remove()

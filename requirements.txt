@@ -1,5 +1,8 @@
-git+https://github.com/Valcrist/toolbox.git
+toolbox[api] @ git+https://github.com/Valcrist/toolbox.git
+fastapi
 sqlalchemy
 sqlalchemy_utils
-psycopg2-binary
 pydantic[email]
+uvicorn[standard]
+psycopg[binary]
+asyncpg

@@ -73,3 +73,57 @@ class PageSchema(PageBase):
 class PageUpdate(BaseModel):
     img_name: Optional[str] = None
     img_path: Optional[str] = None
+
+
+# -------------------------------------------------------------------------------------
+# MangaRelated
+# -------------------------------------------------------------------------------------
+
+
+class MangaRelatedCreate(BaseModel):
+    manga_id: int
+    manga_title: str
+    related_id: int
+    related_title: str
+
+
+# -------------------------------------------------------------------------------------
+# Tag
+# -------------------------------------------------------------------------------------
+
+
+class TagBase(BaseModel):
+    type: str
+    name: str
+    slug: str
+    url: str
+    count: int = 0
+
+
+class TagCreate(TagBase):
+    id: int
+
+
+class TagSchema(TagBase):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TagUpdate(BaseModel):
+    type: Optional[str] = None
+    name: Optional[str] = None
+    slug: Optional[str] = None
+    url: Optional[str] = None
+    count: Optional[int] = None
+
+
+# -------------------------------------------------------------------------------------
+# MangaTag
+# -------------------------------------------------------------------------------------
+
+
+class MangaTagCreate(BaseModel):
+    manga_id: int
+    manga_title: str
+    tag_id: int
+    tag_slug: str

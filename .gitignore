@@ -170,6 +170,8 @@ CLAUDE.md
 .token
 *.token
 
+ref/
+
 test.py
 test_*.py
 test-*.py

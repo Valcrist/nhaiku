@@ -1,3 +1,4 @@
+from sqlalchemy import Table
 from db.common import (
     Base,
     Column,
@@ -8,7 +9,9 @@ from db.common import (
     Boolean,
     DateTime,
     func,
+    relationship,
 )
+from db.relationships.manga import manga_tag, manga_related
 
 
 # =============================================================================
@@ -31,6 +34,14 @@ class Manga(Base):
     faves = Column(Integer, nullable=False, default=0, index=True)
     votes = Column(Integer, nullable=False, default=0, index=True)
     nuked = Column(Boolean, nullable=False, default=False, index=True)
+    tags = relationship("Tag", secondary=manga_tag, backref="manga")
+    page_list = relationship("Page", back_populates="manga")
+    related = relationship(
+        "Manga",
+        secondary=manga_related,
+        primaryjoin=lambda: Manga.id == manga_related.c.manga_id,
+        secondaryjoin=lambda: Manga.id == manga_related.c.related_id,
+    )
     created_at = Column(DateTime(timezone=True), default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), default=func.now(), index=True)
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
@@ -47,3 +58,19 @@ class Page(Base):
     manga_id = Column(Integer, ForeignKey("manga.id"), nullable=False, index=True)
     img_name = Column(String, nullable=False, index=True)
     img_path = Column(String, nullable=False, index=True)
+    manga = relationship("Manga", back_populates="page_list")
+
+
+# =============================================================================
+# TAG — Content tag (language, artist, character, etc.)
+# =============================================================================
+
+
+class Tag(Base):
+    __tablename__ = "tag"
+    id = Column(Integer, primary_key=True, index=True)
+    type = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False, index=True)
+    slug = Column(String, nullable=False, unique=True, index=True)
+    url = Column(String, nullable=False)
+    count = Column(Integer, nullable=False, default=0, index=True)
