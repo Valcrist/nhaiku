@@ -6,3 +6,5 @@ pydantic[email]
 uvicorn[standard]
 psycopg[binary]
 asyncpg
+httpx
+beautifulsoup4
