@@ -27,7 +27,9 @@ class Manga(Base):
     title_full = Column(String, nullable=False, index=True)
     title_jp = Column(String, nullable=True, index=True)
     cover = Column(String, nullable=True, index=True)
+    cover_file = Column(String, nullable=True, index=True)
     thumbnail = Column(String, nullable=True, index=True)
+    thumbnail_file = Column(String, nullable=True, index=True)
     scanlator = Column(String, nullable=True, index=True)
     upload_date = Column(BigInteger, nullable=True, index=True)
     pages = Column(Integer, nullable=False, default=0, index=True)
@@ -56,8 +58,9 @@ class Page(Base):
     __tablename__ = "page"
     id = Column(String, primary_key=True, index=True)  # "{manga_id}_{page_id}"
     manga_id = Column(Integer, ForeignKey("manga.id"), nullable=False, index=True)
-    img_name = Column(String, nullable=False, index=True)
-    img_path = Column(String, nullable=False, index=True)
+    number = Column(Integer, nullable=False, index=True)
+    url = Column(String, nullable=False, index=True)
+    page_file = Column(String, nullable=True, index=True)
     manga = relationship("Manga", back_populates="page_list")
 
 
