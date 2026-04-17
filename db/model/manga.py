@@ -56,8 +56,11 @@ class Page(Base):
     __tablename__ = "page"
     id = Column(String, primary_key=True, index=True)  # "{manga_id}_{page_id}"
     manga_id = Column(Integer, ForeignKey("manga.id"), nullable=False, index=True)
-    img_name = Column(String, nullable=False, index=True)
-    img_path = Column(String, nullable=False, index=True)
+    number = Column(Integer, nullable=False, index=True)
+    url = Column(String, nullable=False, index=True)
+    thumbnail = Column(String, nullable=False, index=True)
+    img_name = Column(String, nullable=True, index=True)
+    img_path = Column(String, nullable=True, index=True)
     manga = relationship("Manga", back_populates="page_list")
 
 

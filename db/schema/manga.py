@@ -58,8 +58,11 @@ class MangaUpdate(BaseModel):
 class PageBase(BaseModel):
     id: str  # "{manga_id}_{page_id}"
     manga_id: int
-    img_name: str
-    img_path: str
+    number: int
+    url: str
+    thumbnail: str
+    img_name: Optional[str] = None
+    img_path: Optional[str] = None
 
 
 class PageCreate(PageBase):
@@ -71,6 +74,9 @@ class PageSchema(PageBase):
 
 
 class PageUpdate(BaseModel):
+    number: Optional[int] = None
+    url: Optional[str] = None
+    thumbnail: Optional[str] = None
     img_name: Optional[str] = None
     img_path: Optional[str] = None
 
