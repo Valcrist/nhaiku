@@ -1,23 +1,24 @@
 import httpx
 from typing import Any
 from helpers.exceptions import NHaikuError
-from helpers.api_schema import GalleryDetail, GalleryListItem, GalleryPage
-from toolbox.utils import get_env, printc, varDump
+from helpers.api_schema import CdnConfig, GalleryDetail, GalleryListItem, GalleryPage
+from toolbox.utils import DEBUG, get_env, printc, varDump, debug
 
 
-NH_URL = "https://nhentai.net/api/v2"
-_NH_KEY: str = get_env("NH_KEY") or ""
-if not _NH_KEY:
-    raise NHaikuError("NH_KEY environment variable is not set")
+NH_URL = get_env("NH_URL", "https://nhentai.net/api/v2")
+PER_PAGE_MAX = 100
+_NH_KEY: str = get_env("NH_KEY", required=True)
 _HEADERS = {
     "Authorization": f"Key {_NH_KEY}",
     "User-Agent": "nhaiku/1.0 (https://github.com/valcrist/nhaiku)",
 }
 
-PER_PAGE_MAX = 100
 
-
-def print_query(label: str, path: str, params: dict[str, Any] | None = None) -> None:
+def print_query(
+    label: str, path: str, params: dict[str, Any] | None = None, lvl: int = 2
+) -> None:
+    if DEBUG < lvl:
+        return
     printc(f"[{label}]: {path}", "black", "yellow")
     if params:
         varDump(params, f"[{label}] params")
@@ -33,10 +34,17 @@ async def api_get(path: str, params: dict[str, Any] | None = None) -> Any:
             return response.json()
         except httpx.HTTPStatusError as exc:
             raise NHaikuError(
-                f"Upstream API error {exc.response.status_code} for {path}"
-            ).add_note(exc.response.text) from exc
+                f"Upstream API error {exc.response.status_code} for {path}:\n\n{exc}"
+            )
         except httpx.RequestError as exc:
-            raise NHaikuError(f"Request failed for {path}") from exc
+            raise NHaikuError(f"Request failed for {path}: {exc}")
+        except Exception as exc:
+            raise NHaikuError(f"Unexpected error for {path}: {exc}")
+
+
+async def get_cdn() -> dict[str, Any]:
+    data = await api_get("/cdn")
+    return CdnConfig.model_validate(data).model_dump()
 
 
 async def get_galleries(page: int = 1, per_page: int = 100) -> dict[str, Any]:
@@ -47,7 +55,9 @@ async def get_galleries(page: int = 1, per_page: int = 100) -> dict[str, Any]:
 
 async def get_gallery(gallery_id: int) -> dict[str, Any]:
     data = await api_get(f"/galleries/{gallery_id}")
-    return GalleryDetail.model_validate(data).model_dump()
+    resp = GalleryDetail.model_validate(data).model_dump()
+    debug(resp, lvl=2)
+    return resp
 
 
 async def get_related_galleries(gallery_id: int) -> dict[str, Any]:

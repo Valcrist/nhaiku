@@ -51,6 +51,11 @@ class PageInfo(BaseModel):
     thumbnail_height: int
 
 
+class CdnConfig(BaseModel):
+    image_servers: list[str]
+    thumb_servers: list[str]
+
+
 class GalleryDetail(BaseModel):
     id: int
     media_id: str

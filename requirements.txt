@@ -1,4 +1,5 @@
 toolbox[api] @ git+https://github.com/Valcrist/toolbox.git
+imgroyale @ git+https://github.com/Valcrist/imgroyale.git
 fastapi
 sqlalchemy
 sqlalchemy_utils

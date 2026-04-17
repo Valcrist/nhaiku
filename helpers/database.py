@@ -6,7 +6,7 @@ from db.common import Base
 from db.model.manga import Manga, Page, Tag
 from db.relationships.manga import manga_tag
 from db.session import AsyncSessionLocal
-from toolbox.utils import err
+from toolbox.utils import printc, debug
 
 
 def model_to_dict(obj: Base) -> dict[str, Any]:
@@ -32,6 +32,11 @@ async def save_manga(
     data: dict[str, Any], session: AsyncSession | None = None
 ) -> dict[str, Any]:
     async def _run(s: AsyncSession) -> dict[str, Any]:
+        printc(
+            f"Saving [{data['id']}] {data['title']['pretty']} ..",
+            "black",
+            "bright_blue",
+        )
         try:
             async with s.begin():
                 manga = await s.merge(
@@ -49,7 +54,7 @@ async def save_manga(
                         faves=data.get("num_favorites", 0),
                     )
                 )
-                for t in data.get("tags", []):
+                tags = [
                     await s.merge(
                         Tag(
                             id=t["id"],
@@ -60,6 +65,8 @@ async def save_manga(
                             count=t.get("count", 0),
                         )
                     )
+                    for t in data.get("tags", [])
+                ]
                 for p in data.get("pages", []):
                     await s.merge(
                         Page(
@@ -67,7 +74,6 @@ async def save_manga(
                             manga_id=manga.id,
                             number=p["number"],
                             url=p["path"],
-                            thumbnail=p["thumbnail"],
                         )
                     )
                 await s.flush()
@@ -83,11 +89,16 @@ async def save_manga(
                                 "manga_id": manga.id,
                                 "manga_title": manga.title,
                                 "tag_id": t["id"],
+                                "tag_type": t["type"],
                                 "tag_slug": t["slug"],
                             }
                             for t in tag_rows
                         ],
                     )
+                # return {
+                #     **model_to_dict(manga),
+                #     "tags": [model_to_dict(t) for t in tags],
+                # }
                 return model_to_dict(manga)
         except:
             raise
