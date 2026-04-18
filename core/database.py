@@ -1,5 +1,6 @@
 from typing import Any
-from sqlalchemy import delete, insert
+from collections.abc import Callable, Coroutine
+from sqlalchemy import delete, insert, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from db.common import Base
@@ -9,8 +10,18 @@ from db.session import AsyncSessionLocal
 from toolbox.utils import printc, debug
 
 
+type _Runner[T] = Callable[[AsyncSession], Coroutine[Any, Any, T]]
+
+
 def model_to_dict(obj: Base) -> dict[str, Any]:
     return {col.name: getattr(obj, col.name) for col in obj.__table__.columns}
+
+
+async def _run_with_session[T](fn: _Runner[T], session: AsyncSession | None) -> T:
+    if session is not None:
+        return await fn(session)
+    async with AsyncSessionLocal() as s:
+        return await fn(s)
 
 
 async def fetch_one(stmt: Any, session: AsyncSession | None = None) -> dict[str, Any]:
@@ -20,10 +31,7 @@ async def fetch_one(stmt: Any, session: AsyncSession | None = None) -> dict[str,
         row = result.scalar_one_or_none()
         return model_to_dict(row) if row is not None else {}
 
-    if session is not None:
-        return await _run(session)
-    async with AsyncSessionLocal() as s:
-        return await _run(s)
+    return await _run_with_session(_run, session)
 
 
 async def save_manga(
@@ -94,7 +102,19 @@ async def save_manga(
             # }
             return model_to_dict(manga)
 
-    if session is not None:
-        return await _run(session)
-    async with AsyncSessionLocal() as s:
-        return await _run(s)
+    return await _run_with_session(_run, session)
+
+
+async def update_manga(
+    data: dict[str, Any], session: AsyncSession | None = None
+) -> dict[str, Any]:
+    manga_id = data["id"]
+    fields = {k: v for k, v in data.items() if k != "id"}
+
+    async def _run(s: AsyncSession) -> dict[str, Any]:
+        async with s.begin():
+            await s.execute(update(Manga).where(Manga.id == manga_id).values(**fields))
+            row = await s.get(Manga, manga_id)
+            return model_to_dict(row) if row is not None else {}
+
+    return await _run_with_session(_run, session)
