@@ -1,12 +1,18 @@
+import sys
 import asyncio
 from core.exceptions import NHaikuError, NHaikuWarning
 from core.api_client import get_galleries, get_gallery, get_related_galleries
 from core.indexer import *
-from toolbox.utils import debug, err, warn, hr, json2var
+from toolbox.utils import DEBUG, debug, err, warn, hr, json2var
 
 
 REINDEX = False
 REINDEX = True
+
+sys.stdout.reconfigure(line_buffering=True)
+
+print(f"DEBUG type: {type(DEBUG)}")
+print(f"DEBUG value: {DEBUG}")
 
 
 async def manual_scrape():

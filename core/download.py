@@ -2,14 +2,23 @@ import httpx
 import asyncio
 from typing import Any
 from datetime import datetime
-
 from imgroyale import dedupe_image
 from core.api_client import get_cdn
+from core.database import update_manga, update_page, get_missing_pages
 from core.exceptions import NHaikuError
 from core.constants import SCRATCH_DIR, COVER_DIR, THUMB_DIR, IMAGE_DIR
 from toolbox.date import utc_now, time_delta
-from toolbox.fs import join_path, basename, path_exists, slash_nix
-from toolbox.utils import DEBUG, get_env, printc, varDump, debug
+from toolbox.fs import (
+    join_path,
+    os_path,
+    slash_nix,
+    path_exists,
+    dirname,
+    basename,
+    barename,
+    delete,
+)
+from toolbox.utils import DEBUG, get_env, printc, varDump, debug, warn
 
 
 CONCURRENT_DL = get_env("CONCURRENT_DL", 5, verbose=1)
@@ -77,25 +86,58 @@ async def download_files(
     return [t.result() for t in tasks]
 
 
-async def download_cover(manga: dict[str, Any]) -> tuple[str, str]:
-    cover_server, thumb_server = await asyncio.gather(
-        get_server(is_thumb=True),
-        get_server(is_thumb=True),
+def cleanup(path: str) -> None:
+    delete(os_path(path))
+    delete(os_path(f"{dirname(path)}/{barename(path)}.webp"))
+
+
+async def download_pages(manga_id: int) -> list[dict[str, Any]]:
+    pages = await get_missing_pages(manga_id)
+    if not pages:
+        return []
+
+    files: list[tuple[str, str]] = []
+    for page in pages:
+        server = await get_server(is_thumb=False)
+        url = f"{server.rstrip('/')}/{page['url']}"
+        dest = join_path(SCRATCH_DIR, f"{manga_id}_{basename(page['url'])}")
+        files.append((url, dest))
+
+    downloaded = await download_files(files)
+    page_files: list[str] = []
+    for scratch_path in downloaded:
+        page_path = dedupe_image(scratch_path, IMAGE_DIR, SCRATCH_DIR)
+        page_file = slash_nix(page_path).removeprefix(slash_nix(IMAGE_DIR)).lstrip("/")
+        page_files.append(page_file)
+        cleanup(scratch_path)
+
+    results = await asyncio.gather(
+        *[update_page(p["id"], {"page_file": pf}) for p, pf in zip(pages, page_files)]
     )
+    return list(results)
+
+
+async def download_art(manga: dict[str, Any], kind: str = "cover") -> str:
+    if kind == "cover":
+        key, dest_dir = "cover", COVER_DIR
+    elif kind == "thumb":
+        key, dest_dir = "thumbnail", THUMB_DIR
+    else:
+        raise ValueError(f"kind must be 'cover' or 'thumb', got {kind!r}")
+    if manga.get(f"{key}_file"):
+        return manga[f"{key}_file"]
+    server = await get_server(is_thumb=True)
     media_id = manga["media_id"]
-    files = [
-        (
-            f"{cover_server.rstrip('/')}/{manga['cover']}",
-            join_path(SCRATCH_DIR, f"{media_id}_{basename(manga['cover'])}"),
-        ),
-        (
-            f"{thumb_server.rstrip('/')}/{manga['thumbnail']}",
-            join_path(SCRATCH_DIR, f"{media_id}_{basename(manga['thumbnail'])}"),
-        ),
-    ]
-    cover_path, thumb_path = await download_files(files)
-    cover_file = dedupe_image(cover_path, COVER_DIR, SCRATCH_DIR)
-    cover_file = slash_nix(cover_file).removeprefix(slash_nix(COVER_DIR)).lstrip("/")
-    thumb_file = dedupe_image(thumb_path, THUMB_DIR, SCRATCH_DIR)
-    thumb_file = slash_nix(thumb_file).removeprefix(slash_nix(THUMB_DIR)).lstrip("/")
-    return cover_file, thumb_file
+    url = f"{server.rstrip('/')}/{manga[key]}"
+    scratch = join_path(SCRATCH_DIR, f"{media_id}_{basename(manga[key])}")
+    (path,) = await download_files([(url, scratch)])
+    result = dedupe_image(path, dest_dir, SCRATCH_DIR)
+    art_file = slash_nix(result).removeprefix(slash_nix(dest_dir)).lstrip("/")
+    cleanup(path)
+    payload: dict[str, Any] = {"id": manga["id"]}
+    if kind == "cover":
+        payload["cover_file"] = art_file
+    else:
+        payload["thumbnail_file"] = art_file
+    await update_manga(payload, session=None)
+    return art_file

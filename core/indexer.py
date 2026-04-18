@@ -1,10 +1,11 @@
+import asyncio
 from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from db.model.manga import Manga
 from core.database import fetch_one, save_manga, update_manga
 from core.api_client import get_gallery, NHaikuError
-from core.download import download_cover
+from core.download import download_art, download_pages
 from core.constants import SCRATCH_DIR, COVER_DIR, THUMB_DIR, IMAGE_DIR
 from toolbox.utils import err, debug, hr, printc
 
@@ -17,12 +18,10 @@ async def index_manga(id: int) -> dict[str, Any]:
     resp = await get_gallery(int(id))
     manga = await save_manga(resp)
     debug(manga, lvl=2)
-    cover, thumb = await download_cover(manga)
-    debug(cover, lvl=2)
-    debug(thumb, lvl=2)
-    await update_manga(
-        {"id": manga["id"], "cover_file": cover, "thumbnail_file": thumb}, session=None
-    )
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(download_art(manga, kind="cover"))
+        tg.create_task(download_art(manga, kind="thumb"))
+        tg.create_task(download_pages(manga["id"]))
     return manga
 
 

@@ -1,6 +1,6 @@
 from typing import Any
 from collections.abc import Callable, Coroutine
-from sqlalchemy import delete, insert, update
+from sqlalchemy import delete, insert, update, select, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from db.common import Base
@@ -15,6 +15,13 @@ type _Runner[T] = Callable[[AsyncSession], Coroutine[Any, Any, T]]
 
 def model_to_dict(obj: Base) -> dict[str, Any]:
     return {col.name: getattr(obj, col.name) for col in obj.__table__.columns}
+
+
+def print_update(label: str, fields: dict[str, Any], lvl: int = 2) -> None:
+    if DEBUG < lvl:
+        return
+    printc(f"Updating: {label} ..", "black", "bright_green")
+    debug(fields, f"{label} update", lvl=lvl)
 
 
 async def _run_with_session[T](fn: _Runner[T], session: AsyncSession | None) -> T:
@@ -105,13 +112,6 @@ async def save_manga(
     return await _run_with_session(_run, session)
 
 
-def print_update(label: str, fields: dict[str, Any], lvl: int = 2) -> None:
-    if DEBUG < lvl:
-        return
-    printc(f"Updating: {label} ..", "black", "bright_green")
-    debug(fields, "Data to update", lvl=lvl)
-
-
 async def update_manga(
     data: dict[str, Any], session: AsyncSession | None = None
 ) -> dict[str, Any]:
@@ -124,5 +124,34 @@ async def update_manga(
             await s.execute(update(Manga).where(Manga.id == manga_id).values(**fields))
             row = await s.get(Manga, manga_id)
             return model_to_dict(row) if row is not None else {}
+
+    return await _run_with_session(_run, session)
+
+
+async def update_page(
+    page_id: str, data: dict[str, Any], session: AsyncSession | None = None
+) -> dict[str, Any]:
+    print_update(f"Page [{page_id}]", data)
+
+    async def _run(s: AsyncSession) -> dict[str, Any]:
+        async with s.begin():
+            await s.execute(update(Page).where(Page.id == page_id).values(**data))
+            row = await s.get(Page, page_id)
+            return model_to_dict(row) if row is not None else {}
+
+    return await _run_with_session(_run, session)
+
+
+async def get_missing_pages(
+    manga_id: int, session: AsyncSession | None = None
+) -> list[dict[str, Any]]:
+    async def _run(s: AsyncSession) -> list[dict[str, Any]]:
+        result = await s.execute(
+            select(Page).where(
+                Page.manga_id == manga_id,
+                or_(Page.page_file == None, Page.page_file == ""),
+            )
+        )
+        return [model_to_dict(row) for row in result.scalars().all()]
 
     return await _run_with_session(_run, session)
