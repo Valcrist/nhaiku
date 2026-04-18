@@ -2,11 +2,13 @@ import httpx
 import asyncio
 from typing import Any
 from datetime import datetime
+
+from imgroyale import dedupe_image
 from core.api_client import get_cdn
 from core.exceptions import NHaikuError
-from core.constants import SCRATCH_DIR
+from core.constants import SCRATCH_DIR, COVER_DIR, THUMB_DIR, IMAGE_DIR
 from toolbox.date import utc_now, time_delta
-from toolbox.fs import join_path, basename, path_exists
+from toolbox.fs import join_path, basename, path_exists, slash_nix
 from toolbox.utils import DEBUG, get_env, printc, varDump, debug
 
 
@@ -92,6 +94,8 @@ async def download_cover(manga: dict[str, Any]) -> tuple[str, str]:
         ),
     ]
     cover_path, thumb_path = await download_files(files)
-    debug(cover_path, lvl=2)
-    debug(thumb_path, lvl=2)
-    return cover_path, thumb_path
+    cover_file = dedupe_image(cover_path, COVER_DIR, SCRATCH_DIR)
+    cover_file = slash_nix(cover_file).removeprefix(slash_nix(COVER_DIR)).lstrip("/")
+    thumb_file = dedupe_image(thumb_path, THUMB_DIR, SCRATCH_DIR)
+    thumb_file = slash_nix(thumb_file).removeprefix(slash_nix(THUMB_DIR)).lstrip("/")
+    return cover_file, thumb_file

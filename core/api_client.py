@@ -19,7 +19,7 @@ def print_query(
 ) -> None:
     if DEBUG < lvl or path in ["/cdn"]:
         return
-    printc(f"[{label}]: {path}", "black", "yellow")
+    printc(f"[{label}]: {path}", "black", "bright_yellow")
     if params:
         varDump(params, f"[{label}] params")
 

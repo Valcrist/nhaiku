@@ -1,3 +1,4 @@
+import mimetypes
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
@@ -7,10 +8,13 @@ from toolbox.utils import get_env, debug
 
 router = APIRouter(tags=["static"])
 
+mimetypes.add_type("image/webp", ".webp")
+mimetypes.add_type("image/avif", ".avif")
 
-def _resolve_safe(base: Path, rel: str) -> Path:
-    resolved = (base / rel).resolve()
-    if not resolved.is_relative_to(base.resolve()):
+
+def _resolve_safe(base: Path | str, rel: str) -> Path:
+    resolved = (Path(base) / rel).resolve()
+    if not resolved.is_relative_to(Path(base).resolve()):
         raise HTTPException(status_code=400, detail="Invalid path")
     if not resolved.is_file():
         raise HTTPException(status_code=404, detail="File not found")

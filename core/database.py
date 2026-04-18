@@ -7,7 +7,7 @@ from db.common import Base
 from db.model.manga import Manga, Page, Tag
 from db.relationships.manga import manga_tag
 from db.session import AsyncSessionLocal
-from toolbox.utils import printc, debug
+from toolbox.utils import DEBUG, printc, debug
 
 
 type _Runner[T] = Callable[[AsyncSession], Coroutine[Any, Any, T]]
@@ -41,7 +41,7 @@ async def save_manga(
         printc(
             f"Saving [{data['id']}] {data['title']['pretty']} ..",
             "black",
-            "bright_blue",
+            "bright_green",
         )
         async with s.begin():
             manga = await s.merge(
@@ -105,11 +105,19 @@ async def save_manga(
     return await _run_with_session(_run, session)
 
 
+def print_update(label: str, fields: dict[str, Any], lvl: int = 2) -> None:
+    if DEBUG < lvl:
+        return
+    printc(f"Updating: {label} ..", "black", "bright_green")
+    debug(fields, "Data to update", lvl=lvl)
+
+
 async def update_manga(
     data: dict[str, Any], session: AsyncSession | None = None
 ) -> dict[str, Any]:
     manga_id = data["id"]
     fields = {k: v for k, v in data.items() if k != "id"}
+    print_update(f"Manga [{manga_id}]", fields)
 
     async def _run(s: AsyncSession) -> dict[str, Any]:
         async with s.begin():

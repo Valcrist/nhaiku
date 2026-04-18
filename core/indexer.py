@@ -2,7 +2,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from db.model.manga import Manga
-from core.database import fetch_one, save_manga
+from core.database import fetch_one, save_manga, update_manga
 from core.api_client import get_gallery, NHaikuError
 from core.download import download_cover
 from core.constants import SCRATCH_DIR, COVER_DIR, THUMB_DIR, IMAGE_DIR
@@ -20,6 +20,9 @@ async def index_manga(id: int) -> dict[str, Any]:
     cover, thumb = await download_cover(manga)
     debug(cover, lvl=2)
     debug(thumb, lvl=2)
+    await update_manga(
+        {"id": manga["id"], "cover_file": cover, "thumbnail_file": thumb}, session=None
+    )
     return manga
 
 
