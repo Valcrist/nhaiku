@@ -1,7 +1,7 @@
 import httpx
 from typing import Any
-from helpers.exceptions import NHaikuError
-from helpers.api_schema import CdnConfig, GalleryDetail, GalleryListItem, GalleryPage
+from core.exceptions import NHaikuError
+from core.api_schema import CdnConfig, GalleryDetail, GalleryListItem, GalleryPage
 from toolbox.utils import DEBUG, get_env, printc, varDump, debug
 
 
@@ -17,7 +17,7 @@ _HEADERS = {
 def print_query(
     label: str, path: str, params: dict[str, Any] | None = None, lvl: int = 2
 ) -> None:
-    if DEBUG < lvl:
+    if DEBUG < lvl or path in ["/cdn"]:
         return
     printc(f"[{label}]: {path}", "black", "yellow")
     if params:

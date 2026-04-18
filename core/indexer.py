@@ -1,9 +1,10 @@
 from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from helpers.database import fetch_one, save_manga
+from core.database import fetch_one, save_manga
 from db.model.manga import Manga
-from helpers.api_client import get_gallery, NHaikuError
+from core.api_client import get_gallery, NHaikuError
+from core.download import download_cover
 from toolbox.utils import err, debug, hr, printc
 
 
@@ -12,13 +13,13 @@ async def query_manga(id: int, session: AsyncSession | None = None) -> dict[str,
 
 
 async def index_manga(id: int) -> dict[str, Any]:
-    try:
-        resp = await get_gallery(int(id))
-        manga = await save_manga(resp)
-        debug(manga, lvl=2)
-        return manga
-    except Exception:
-        raise
+    resp = await get_gallery(int(id))
+    manga = await save_manga(resp)
+    debug(manga, lvl=2)
+    cover, thumb = await download_cover(manga)
+    debug(cover, lvl=2)
+    debug(thumb, lvl=2)
+    return manga
 
 
 async def get_manga(id: int, reindex: bool = False) -> dict[str, Any]:

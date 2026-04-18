@@ -1,7 +1,7 @@
 import asyncio
-from helpers.exceptions import NHaikuError, NHaikuWarning
-from helpers.api_client import get_galleries, get_gallery, get_related_galleries
-from helpers.indexer import *
+from core.exceptions import NHaikuError, NHaikuWarning
+from core.api_client import get_galleries, get_gallery, get_related_galleries
+from core.indexer import *
 from toolbox.utils import debug, err, warn, hr, json2var
 
 
@@ -20,7 +20,7 @@ async def manual_scrape():
         debug(manga)
         print(f"Manga ID: {id}, Votes: {votes}, Pages: {pages}")
         manga = await get_manga(id, reindex=REINDEX)
-        debug(manga)
+        # debug(manga)
 
         break
     # gs = await get_galleries(page=2)
