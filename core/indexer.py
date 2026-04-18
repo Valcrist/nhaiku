@@ -1,10 +1,11 @@
 from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from core.database import fetch_one, save_manga
 from db.model.manga import Manga
+from core.database import fetch_one, save_manga
 from core.api_client import get_gallery, NHaikuError
 from core.download import download_cover
+from core.constants import SCRATCH_DIR, COVER_DIR, THUMB_DIR, IMAGE_DIR
 from toolbox.utils import err, debug, hr, printc
 
 

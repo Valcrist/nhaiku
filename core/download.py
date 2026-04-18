@@ -1,13 +1,12 @@
-import asyncio
-import os
 import httpx
-from datetime import datetime
+import asyncio
 from typing import Any
-from core.constants import SCRATCH_DIR, COVER_DIR, THUMB_DIR, IMAGE_DIR
-from core.exceptions import NHaikuError
+from datetime import datetime
 from core.api_client import get_cdn
+from core.exceptions import NHaikuError
+from core.constants import SCRATCH_DIR
 from toolbox.date import utc_now, time_delta
-from toolbox.fs import join_path, basename
+from toolbox.fs import join_path, basename, path_exists
 from toolbox.utils import DEBUG, get_env, printc, varDump, debug
 
 
@@ -48,7 +47,7 @@ async def _fetch_file(
     dest: str,
     redownload: bool = False,
 ) -> str:
-    if not redownload and os.path.exists(dest):
+    if not redownload and path_exists(dest):
         return dest
     async with sem:
         printc(f"Downloading: {url} to {dest} ..\n", "yellow")
@@ -92,5 +91,7 @@ async def download_cover(manga: dict[str, Any]) -> tuple[str, str]:
             join_path(SCRATCH_DIR, f"{media_id}_{basename(manga['thumbnail'])}"),
         ),
     ]
-    paths = await download_files(files)
-    return paths[0], paths[1]
+    cover_path, thumb_path = await download_files(files)
+    debug(cover_path, lvl=2)
+    debug(thumb_path, lvl=2)
+    return cover_path, thumb_path
