@@ -57,16 +57,43 @@ async def _fetch_file(
     url: str,
     dest: str,
     redownload: bool = False,
+    retries: int = 10,
 ) -> str:
     if not redownload and path_exists(dest):
         return dest
     async with sem:
-        printc(f"Downloading: {url}\n         to {dest} ..", "yellow")
-        resp = await client.get(url)
-        resp.raise_for_status()
-        with open(dest, "wb") as f:
-            f.write(resp.content)
-    return dest
+        for attempt in range(retries + 1):
+            try:
+                printc(f"Downloading: {url}\n         to: {dest} ..", "yellow")
+                resp = await client.get(url)
+                resp.raise_for_status()
+                with open(dest, "wb") as f:
+                    f.write(resp.content)
+                return dest
+            except (httpx.ConnectTimeout, httpx.TimeoutException) as exc:
+                if attempt < retries:
+                    delay = 2**attempt
+                    printc(f"[download] Connection timeout: {url}", "bright_yellow")
+                    printc(
+                        f"[download] Retry: {attempt + 1} of {retries} [{delay}s]",
+                        "bright_yellow",
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise
+            except httpx.HTTPStatusError as exc:
+                code = exc.response.status_code
+                if attempt < retries:
+                    delay = 2**attempt
+                    printc(f"[download] Response code {code}: {url}", "bright_yellow")
+                    printc(
+                        f"[download] Retry: {attempt + 1} of {retries} [{delay}s]",
+                        "bright_yellow",
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise
+    return dest  # unreachable, satisfies type checker
 
 
 async def download_files(

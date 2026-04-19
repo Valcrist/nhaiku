@@ -37,18 +37,17 @@ async def api_get(
                 response.raise_for_status()
                 return response.json()
             except httpx.HTTPStatusError as exc:
-                if exc.response.status_code == 429 and attempt < retries:
+                code = exc.response.status_code
+                if attempt < retries:
                     delay = 2**attempt
-                    printc(f"[api_get] Code 429: {path}", "bright_yellow")
+                    printc(f"[api_get] Response code {code}: {path}", "bright_yellow")
                     printc(
                         f"[api_get] Retry: {attempt + 1} of {retries} [{delay}s]",
                         "bright_yellow",
                     )
                     await asyncio.sleep(delay)
                     continue
-                raise NHaikuError(
-                    f"Upstream API error {exc.response.status_code} for {path}:\n\n{exc}"
-                )
+                raise NHaikuError(f"Upstream API error {code} for {path}:\n\n{exc}")
             except httpx.RequestError as exc:
                 raise NHaikuError(f"Request failed for {path}: {exc}")
             except Exception as exc:
