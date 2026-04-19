@@ -174,6 +174,7 @@ async def download_art(
     url = f"{server.rstrip('/')}/{manga[key]}"
     scratch = join_path(SCRATCH_DIR, f"{media_id}_{basename(manga[key])}")
     (path,) = await download_files([(url, scratch)])
+    printc(f"Deduplicating {kind}: {path} ..", "bright_blue")
     result = dedupe_image(path, dest_dir, SCRATCH_DIR)
     art_file = slash_nix(result).removeprefix(slash_nix(dest_dir)).lstrip("/")
     cleanup(path)
