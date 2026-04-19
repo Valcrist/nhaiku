@@ -3,9 +3,9 @@ import asyncio
 from typing import Any
 from datetime import datetime
 from imgroyale import dedupe_image
+from sqlalchemy.ext.asyncio import AsyncSession
 from core.api_client import get_cdn
-from core.database import update_manga, update_page, get_missing_pages
-from core.exceptions import NHaikuError
+from core.database import update_manga, update_page, get_missing_pages, fetch_art
 from core.constants import SCRATCH_DIR, COVER_DIR, THUMB_DIR, IMAGE_DIR
 from toolbox.date import utc_now, time_delta
 from toolbox.fs import (
@@ -118,8 +118,10 @@ def cleanup(path: str) -> None:
     delete(os_path(f"{dirname(path)}/{barename(path)}.webp"))
 
 
-async def download_pages(manga_id: int) -> list[dict[str, Any]]:
-    pages = await get_missing_pages(manga_id)
+async def download_pages(
+    manga_id: int, session: AsyncSession | None = None
+) -> list[dict[str, Any]]:
+    pages = await get_missing_pages(manga_id, session=session)
     if not pages:
         return []
 
@@ -144,12 +146,17 @@ async def download_pages(manga_id: int) -> list[dict[str, Any]]:
     page_files: list[str] = await asyncio.gather(*[_dedupe(p) for p in downloaded])
 
     results = await asyncio.gather(
-        *[update_page(p["id"], {"page_file": pf}) for p, pf in zip(pages, page_files)]
+        *[
+            update_page(p["id"], {"page_file": pf}, session=session)
+            for p, pf in zip(pages, page_files)
+        ]
     )
     return list(results)
 
 
-async def download_art(manga: dict[str, Any], kind: str = "cover") -> str:
+async def download_art(
+    manga: dict[str, Any], kind: str = "cover", session: AsyncSession | None = None
+) -> str:
     art_map = {
         "cover": (COVER_DIR, "cover", "cover_file"),
         "thumb": (THUMB_DIR, "thumbnail", "thumbnail_file"),
@@ -157,8 +164,9 @@ async def download_art(manga: dict[str, Any], kind: str = "cover") -> str:
     if kind not in art_map:
         raise ValueError(f"kind must be 'cover' or 'thumb', got {kind!r}")
     dest_dir, key, field = art_map[kind]
-    if manga.get(f"{key}_file"):
-        return manga[f"{key}_file"]
+    art = await fetch_art(manga["id"], session=session)
+    if art.get(f"{key}_file"):
+        return art[f"{key}_file"]
     server = await get_server(is_thumb=True)
     media_id = manga["media_id"]
     url = f"{server.rstrip('/')}/{manga[key]}"
@@ -167,5 +175,5 @@ async def download_art(manga: dict[str, Any], kind: str = "cover") -> str:
     result = dedupe_image(path, dest_dir, SCRATCH_DIR)
     art_file = slash_nix(result).removeprefix(slash_nix(dest_dir)).lstrip("/")
     cleanup(path)
-    await update_manga(manga["id"], {field: art_file}, session=None)
+    await update_manga(manga["id"], {field: art_file}, session=session)
     return art_file

@@ -1,6 +1,6 @@
 import sys
 from fastapi import FastAPI
-from routes import tags, static
+from routes import manga, static, tags
 from db.common import init_db
 from contextlib import asynccontextmanager
 from toolbox.api import logger_middleware, init_scalar_docs, run_server
@@ -26,8 +26,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.include_router(tags.router)
+app.include_router(manga.router)
 app.include_router(static.router)
+app.include_router(tags.router)
 
 
 if ENV == "DEV" or LOG_REQUESTS or LOG_RESPONSE:

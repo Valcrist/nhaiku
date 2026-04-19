@@ -74,6 +74,6 @@ class Tag(Base):
     id = Column(Integer, primary_key=True, index=True)
     type = Column(String, nullable=False, index=True)
     name = Column(String, nullable=False, index=True)
-    slug = Column(String, nullable=False, unique=True, index=True)
+    slug = Column(String, nullable=False, index=True)
     url = Column(String, nullable=False)
     count = Column(Integer, nullable=False, default=0, index=True)

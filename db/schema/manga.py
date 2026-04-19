@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from datetime import datetime
 
 
@@ -134,3 +134,48 @@ class MangaTagCreate(BaseModel):
     tag_id: int
     tag_type: str
     tag_slug: str
+
+
+# -------------------------------------------------------------------------------------
+# MangaResponse — shaped API response with nested tags and pages
+# -------------------------------------------------------------------------------------
+
+
+class TagResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    type: str
+    slug: str
+
+
+class PageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    number: int
+    page_file: Optional[str] = None
+
+
+class MangaResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    media_id: str
+    title: str
+    title_full: str
+    title_jp: Optional[str] = None
+    cover_file: Optional[str] = None
+    thumbnail_file: Optional[str] = None
+    scanlator: Optional[str] = None
+    pages: int
+    votes: int
+    tags: list[TagResponse] = []
+    page_list: list[PageResponse] = []
+
+    @field_validator("tags", mode="after")
+    @classmethod
+    def sort_tags(cls, v: list[TagResponse]) -> list[TagResponse]:
+        return sorted(v, key=lambda t: (t.type, t.slug))
+
+    @field_validator("page_list", mode="after")
+    @classmethod
+    def sort_pages(cls, v: list[PageResponse]) -> list[PageResponse]:
+        return sorted(v, key=lambda p: p.number)

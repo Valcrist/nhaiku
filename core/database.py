@@ -3,10 +3,11 @@ from collections.abc import Callable, Coroutine
 from sqlalchemy import delete, insert, update, select, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from db.common import Base
 from db.model.manga import Manga, Page, Tag
 from db.relationships.manga import manga_tag
-from db.schema.manga import MangaUpdate, PageUpdate
+from db.schema.manga import MangaResponse, MangaUpdate, PageUpdate
 from db.session import AsyncSessionLocal
 from toolbox.utils import DEBUG, printc, debug, warn
 
@@ -29,7 +30,8 @@ async def _run_with_session[T](fn: _Runner[T], session: AsyncSession | None) -> 
     if session is not None:
         return await fn(session)
     async with AsyncSessionLocal() as s:
-        return await fn(s)
+        async with s.begin():
+            return await fn(s)
 
 
 async def fetch_one(stmt: Any, session: AsyncSession | None = None) -> dict[str, Any]:
@@ -41,65 +43,92 @@ async def fetch_one(stmt: Any, session: AsyncSession | None = None) -> dict[str,
     return await _run_with_session(_run, session)
 
 
+async def fetch_art(id: int, session: AsyncSession | None = None) -> dict[str, Any]:
+    async def _run(s: AsyncSession) -> dict[str, Any]:
+        result = await s.execute(
+            select(Manga.cover_file, Manga.thumbnail_file).where(Manga.id == id)
+        )
+        row = result.one_or_none()
+        if row is None:
+            return {}
+        return {"cover_file": row.cover_file, "thumbnail_file": row.thumbnail_file}
+
+    return await _run_with_session(_run, session)
+
+
+async def query_manga(id: int, session: AsyncSession | None = None) -> dict[str, Any]:
+    async def _run(s: AsyncSession) -> dict[str, Any]:
+        result = await s.execute(
+            select(Manga)
+            .where(Manga.id == id)
+            .options(selectinload(Manga.tags), selectinload(Manga.page_list))
+        )
+        manga = result.scalar_one_or_none()
+        if manga is None:
+            return {}
+        return MangaResponse.model_validate(manga).model_dump()
+
+    return await _run_with_session(_run, session)
+
+
 async def save_manga(
     data: dict[str, Any], session: AsyncSession | None = None
 ) -> dict[str, Any]:
     async def _run(s: AsyncSession) -> dict[str, Any]:
         print_op("Save", f"[{data['id']}] {data['title']['pretty']}", data)
-        async with s.begin():
-            manga = await s.merge(
-                Manga(
-                    id=data["id"],
-                    media_id=data["media_id"],
-                    title=data["title"]["pretty"],
-                    title_full=data["title"]["english"],
-                    title_jp=data["title"].get("japanese"),
-                    cover=(data.get("cover") or {}).get("path"),
-                    thumbnail=(data.get("thumbnail") or {}).get("path"),
-                    scanlator=data.get("scanlator"),
-                    upload_date=data.get("upload_date"),
-                    pages=data.get("num_pages", 0),
-                    faves=data.get("num_favorites", 0),
+        manga = await s.merge(
+            Manga(
+                id=data["id"],
+                media_id=data["media_id"],
+                title=data["title"]["pretty"],
+                title_full=data["title"]["english"],
+                title_jp=data["title"].get("japanese"),
+                cover=(data.get("cover") or {}).get("path"),
+                thumbnail=(data.get("thumbnail") or {}).get("path"),
+                scanlator=data.get("scanlator"),
+                upload_date=data.get("upload_date"),
+                pages=data.get("num_pages", 0),
+                faves=data.get("num_favorites", 0),
+            )
+        )
+        for t in data.get("tags", []):
+            await s.merge(
+                Tag(
+                    id=t["id"],
+                    type=t["type"],
+                    name=t["name"],
+                    slug=t["slug"],
+                    url=t["url"],
+                    count=t.get("count", 0),
                 )
             )
-            for t in data.get("tags", []):
-                await s.merge(
-                    Tag(
-                        id=t["id"],
-                        type=t["type"],
-                        name=t["name"],
-                        slug=t["slug"],
-                        url=t["url"],
-                        count=t.get("count", 0),
-                    )
+        for p in data.get("pages", []):
+            await s.merge(
+                Page(
+                    id=f"{manga.id}_{p['number']}",
+                    manga_id=manga.id,
+                    number=p["number"],
+                    url=p["path"],
                 )
-            for p in data.get("pages", []):
-                await s.merge(
-                    Page(
-                        id=f"{manga.id}_{p['number']}",
-                        manga_id=manga.id,
-                        number=p["number"],
-                        url=p["path"],
-                    )
-                )
-            await s.flush()
-            await s.execute(delete(manga_tag).where(manga_tag.c.manga_id == manga.id))
-            tag_rows = data.get("tags", [])
-            if tag_rows:
-                await s.execute(
-                    insert(manga_tag),
-                    [
-                        {
-                            "manga_id": manga.id,
-                            "manga_title": manga.title,
-                            "tag_id": t["id"],
-                            "tag_type": t["type"],
-                            "tag_slug": t["slug"],
-                        }
-                        for t in tag_rows
-                    ],
-                )
-            return model_to_dict(manga)
+            )
+        await s.flush()
+        await s.execute(delete(manga_tag).where(manga_tag.c.manga_id == manga.id))
+        tag_rows = data.get("tags", [])
+        if tag_rows:
+            await s.execute(
+                insert(manga_tag),
+                [
+                    {
+                        "manga_id": manga.id,
+                        "manga_title": manga.title,
+                        "tag_id": t["id"],
+                        "tag_type": t["type"],
+                        "tag_slug": t["slug"],
+                    }
+                    for t in tag_rows
+                ],
+            )
+        return model_to_dict(manga)
 
     return await _run_with_session(_run, session)
 
@@ -115,10 +144,9 @@ async def update_manga(
             row = await s.get(Manga, id)
             return model_to_dict(row) if row is not None else {}
         print_op("Update", f"Manga [{id}]", fields)
-        async with s.begin():
-            await s.execute(update(Manga).where(Manga.id == id).values(**fields))
-            row = await s.get(Manga, id)
-            return model_to_dict(row) if row is not None else {}
+        await s.execute(update(Manga).where(Manga.id == id).values(**fields))
+        row = await s.get(Manga, id)
+        return model_to_dict(row) if row is not None else {}
 
     return await _run_with_session(_run, session)
 
@@ -134,10 +162,9 @@ async def update_page(
             row = await s.get(Page, id)
             return model_to_dict(row) if row is not None else {}
         print_op("Update", f"Page [{id}]", fields)
-        async with s.begin():
-            await s.execute(update(Page).where(Page.id == id).values(**fields))
-            row = await s.get(Page, id)
-            return model_to_dict(row) if row is not None else {}
+        await s.execute(update(Page).where(Page.id == id).values(**fields))
+        row = await s.get(Page, id)
+        return model_to_dict(row) if row is not None else {}
 
     return await _run_with_session(_run, session)
 
