@@ -61,7 +61,7 @@ async def _fetch_file(
     if not redownload and path_exists(dest):
         return dest
     async with sem:
-        printc(f"Downloading: {url} to {dest} ..\n", "yellow")
+        printc(f"Downloading: {url}\n         to {dest} ..", "yellow")
         resp = await client.get(url)
         resp.raise_for_status()
         with open(dest, "wb") as f:
@@ -106,7 +106,7 @@ async def download_pages(manga_id: int) -> list[dict[str, Any]]:
     downloaded = await download_files(files)
 
     async def _dedupe(scratch_path: str) -> str:
-        printc(f"Deduplicating: {scratch_path} ..\n", "bright_yellow")
+        printc(f"Deduplicating: {scratch_path} ..", "bright_blue")
         page_path = await asyncio.to_thread(
             dedupe_image, scratch_path, IMAGE_DIR, SCRATCH_DIR
         )
