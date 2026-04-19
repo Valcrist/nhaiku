@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 from typing import Any
 from core.exceptions import NHaikuError
@@ -24,22 +25,34 @@ def print_query(
         varDump(params, f"[{label}] params")
 
 
-async def api_get(path: str, params: dict[str, Any] | None = None) -> Any:
+async def api_get(
+    path: str, params: dict[str, Any] | None = None, retries: int = 10
+) -> Any:
     print_query("api_get", path, params)
     url = f"{NH_URL}{path}"
     async with httpx.AsyncClient(headers=_HEADERS) as client:
-        try:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as exc:
-            raise NHaikuError(
-                f"Upstream API error {exc.response.status_code} for {path}:\n\n{exc}"
-            )
-        except httpx.RequestError as exc:
-            raise NHaikuError(f"Request failed for {path}: {exc}")
-        except Exception as exc:
-            raise NHaikuError(f"Unexpected error for {path}: {exc}")
+        for attempt in range(retries + 1):
+            try:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 429 and attempt < retries:
+                    delay = 2**attempt
+                    printc(f"[api_get] Code 429: {path}", "bright_yellow")
+                    printc(
+                        f"[api_get] Retry: {attempt + 1} of {retries} [{delay}s]",
+                        "bright_yellow",
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise NHaikuError(
+                    f"Upstream API error {exc.response.status_code} for {path}:\n\n{exc}"
+                )
+            except httpx.RequestError as exc:
+                raise NHaikuError(f"Request failed for {path}: {exc}")
+            except Exception as exc:
+                raise NHaikuError(f"Unexpected error for {path}: {exc}")
 
 
 async def get_cdn() -> dict[str, Any]:
