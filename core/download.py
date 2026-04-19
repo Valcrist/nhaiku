@@ -22,6 +22,7 @@ from toolbox.utils import DEBUG, get_env, printc, varDump, debug, warn
 
 
 CONCURRENT_DL = get_env("CONCURRENT_DL", 5, verbose=1)
+CONCURRENT_DB = get_env("CONCURRENT_DB", 10, verbose=1)
 
 _CDN_TTL = 7200  # 2 hours
 _cdn: dict[str, Any] = {}
@@ -118,6 +119,14 @@ def cleanup(path: str) -> None:
     delete(os_path(f"{dirname(path)}/{barename(path)}.webp"))
 
 
+async def dedupe_page(img_path: str) -> str:
+    printc(f"Deduplicating: {img_path} ..", "bright_blue")
+    page_path = await asyncio.to_thread(dedupe_image, img_path, IMAGE_DIR, SCRATCH_DIR)
+    page_file = slash_nix(page_path).removeprefix(slash_nix(IMAGE_DIR)).lstrip("/")
+    cleanup(img_path)
+    return page_file
+
+
 async def download_pages(
     manga_id: int, session: AsyncSession | None = None
 ) -> list[dict[str, Any]]:
@@ -133,25 +142,18 @@ async def download_pages(
         files.append((url, dest))
 
     downloaded = await download_files(files)
+    sem = asyncio.Semaphore(CONCURRENT_DB)
 
-    async def _dedupe(scratch_path: str) -> str:
-        printc(f"Deduplicating: {scratch_path} ..", "bright_blue")
-        page_path = await asyncio.to_thread(
-            dedupe_image, scratch_path, IMAGE_DIR, SCRATCH_DIR
-        )
-        page_file = slash_nix(page_path).removeprefix(slash_nix(IMAGE_DIR)).lstrip("/")
-        cleanup(scratch_path)
-        return page_file
+    async def _process(page: dict[str, Any], scratch_path: str) -> dict[str, Any]:
+        page_file = await dedupe_page(scratch_path)
+        async with sem:
+            return await update_page(
+                page["id"], {"page_file": page_file}, session=session
+            )
 
-    page_files: list[str] = await asyncio.gather(*[_dedupe(p) for p in downloaded])
-
-    results = await asyncio.gather(
-        *[
-            update_page(p["id"], {"page_file": pf}, session=session)
-            for p, pf in zip(pages, page_files)
-        ]
+    return list(
+        await asyncio.gather(*[_process(p, s) for p, s in zip(pages, downloaded)])
     )
-    return list(results)
 
 
 async def download_art(
