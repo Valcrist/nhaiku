@@ -14,7 +14,9 @@ class MangaBase(BaseModel):
     title_full: str
     title_jp: Optional[str] = None
     cover: Optional[str] = None
+    cover_file: Optional[str] = None
     thumbnail: Optional[str] = None
+    thumbnail_file: Optional[str] = None
     scanlator: Optional[str] = None
     upload_date: Optional[int] = None
     pages: int = 0
@@ -41,7 +43,9 @@ class MangaUpdate(BaseModel):
     title_full: Optional[str] = None
     title_jp: Optional[str] = None
     cover: Optional[str] = None
+    cover_file: Optional[str] = None
     thumbnail: Optional[str] = None
+    thumbnail_file: Optional[str] = None
     scanlator: Optional[str] = None
     upload_date: Optional[int] = None
     pages: Optional[int] = None
