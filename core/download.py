@@ -118,12 +118,13 @@ async def download_pages(manga_id: int) -> list[dict[str, Any]]:
 
 
 async def download_art(manga: dict[str, Any], kind: str = "cover") -> str:
-    if kind == "cover":
-        key, dest_dir = "cover", COVER_DIR
-    elif kind == "thumb":
-        key, dest_dir = "thumbnail", THUMB_DIR
-    else:
+    art_map = {
+        "cover": (COVER_DIR, "cover", "cover_file"),
+        "thumb": (THUMB_DIR, "thumbnail", "thumbnail_file"),
+    }
+    if kind not in art_map:
         raise ValueError(f"kind must be 'cover' or 'thumb', got {kind!r}")
+    dest_dir, key, field = art_map[kind]
     if manga.get(f"{key}_file"):
         return manga[f"{key}_file"]
     server = await get_server(is_thumb=True)
@@ -134,10 +135,5 @@ async def download_art(manga: dict[str, Any], kind: str = "cover") -> str:
     result = dedupe_image(path, dest_dir, SCRATCH_DIR)
     art_file = slash_nix(result).removeprefix(slash_nix(dest_dir)).lstrip("/")
     cleanup(path)
-    payload: dict[str, Any] = {"id": manga["id"]}
-    if kind == "cover":
-        payload["cover_file"] = art_file
-    else:
-        payload["thumbnail_file"] = art_file
-    await update_manga(payload, session=None)
+    await update_manga(manga["id"], {field: art_file}, session=None)
     return art_file

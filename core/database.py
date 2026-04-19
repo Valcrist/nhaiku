@@ -6,8 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.common import Base
 from db.model.manga import Manga, Page, Tag
 from db.relationships.manga import manga_tag
+from db.schema.manga import MangaUpdate, PageUpdate
 from db.session import AsyncSessionLocal
-from toolbox.utils import DEBUG, printc, debug
+from toolbox.utils import DEBUG, printc, debug, warn
 
 
 type _Runner[T] = Callable[[AsyncSession], Coroutine[Any, Any, T]]
@@ -17,11 +18,11 @@ def model_to_dict(obj: Base) -> dict[str, Any]:
     return {col.name: getattr(obj, col.name) for col in obj.__table__.columns}
 
 
-def print_update(label: str, fields: dict[str, Any], lvl: int = 2) -> None:
+def print_op(op: str, label: str, fields: dict[str, Any], lvl: int = 3) -> None:
     if DEBUG < lvl:
         return
-    printc(f"Updating: {label} ..", "black", "bright_green")
-    debug(fields, f"{label} update", lvl=lvl)
+    printc(f"{op}: {label} ..", "bright_cyan", "blue")
+    debug(fields, f"{label} {op.lower()}", lvl=lvl)
 
 
 async def _run_with_session[T](fn: _Runner[T], session: AsyncSession | None) -> T:
@@ -33,7 +34,6 @@ async def _run_with_session[T](fn: _Runner[T], session: AsyncSession | None) -> 
 
 async def fetch_one(stmt: Any, session: AsyncSession | None = None) -> dict[str, Any]:
     async def _run(s: AsyncSession) -> dict[str, Any]:
-        1 / 0
         result = await s.execute(stmt)
         row = result.scalar_one_or_none()
         return model_to_dict(row) if row is not None else {}
@@ -45,11 +45,7 @@ async def save_manga(
     data: dict[str, Any], session: AsyncSession | None = None
 ) -> dict[str, Any]:
     async def _run(s: AsyncSession) -> dict[str, Any]:
-        printc(
-            f"Saving [{data['id']}] {data['title']['pretty']} ..",
-            "black",
-            "bright_green",
-        )
+        print_op("Save", f"[{data['id']}] {data['title']['pretty']}", data)
         async with s.begin():
             manga = await s.merge(
                 Manga(
@@ -103,26 +99,25 @@ async def save_manga(
                         for t in tag_rows
                     ],
                 )
-            # return {
-            #     **model_to_dict(manga),
-            #     "tags": [model_to_dict(t) for t in tags],
-            # }
             return model_to_dict(manga)
 
     return await _run_with_session(_run, session)
 
 
 async def update_manga(
-    data: dict[str, Any], session: AsyncSession | None = None
+    manga_id: int, data: dict[str, Any], session: AsyncSession | None = None
 ) -> dict[str, Any]:
-    manga_id = data["id"]
-    fields = {k: v for k, v in data.items() if k != "id"}
-    print_update(f"Manga [{manga_id}]", fields)
-
     async def _run(s: AsyncSession) -> dict[str, Any]:
+        id = int(manga_id)
+        fields = MangaUpdate(**data).model_dump(exclude_none=True)
+        if not fields:
+            warn(f"No fields to update for Manga [{id}]")
+            row = await s.get(Manga, id)
+            return model_to_dict(row) if row is not None else {}
+        print_op("Update", f"Manga [{id}]", fields)
         async with s.begin():
-            await s.execute(update(Manga).where(Manga.id == manga_id).values(**fields))
-            row = await s.get(Manga, manga_id)
+            await s.execute(update(Manga).where(Manga.id == id).values(**fields))
+            row = await s.get(Manga, id)
             return model_to_dict(row) if row is not None else {}
 
     return await _run_with_session(_run, session)
@@ -131,12 +126,17 @@ async def update_manga(
 async def update_page(
     page_id: str, data: dict[str, Any], session: AsyncSession | None = None
 ) -> dict[str, Any]:
-    print_update(f"Page [{page_id}]", data)
-
     async def _run(s: AsyncSession) -> dict[str, Any]:
+        id = str(page_id)
+        fields = PageUpdate(**data).model_dump(exclude_none=True)
+        if not fields:
+            warn(f"No fields to update for Page [{id}]")
+            row = await s.get(Page, id)
+            return model_to_dict(row) if row is not None else {}
+        print_op("Update", f"Page [{id}]", fields)
         async with s.begin():
-            await s.execute(update(Page).where(Page.id == page_id).values(**data))
-            row = await s.get(Page, page_id)
+            await s.execute(update(Page).where(Page.id == id).values(**fields))
+            row = await s.get(Page, id)
             return model_to_dict(row) if row is not None else {}
 
     return await _run_with_session(_run, session)
