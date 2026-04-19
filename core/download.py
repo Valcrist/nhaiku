@@ -104,12 +104,17 @@ async def download_pages(manga_id: int) -> list[dict[str, Any]]:
         files.append((url, dest))
 
     downloaded = await download_files(files)
-    page_files: list[str] = []
-    for scratch_path in downloaded:
-        page_path = dedupe_image(scratch_path, IMAGE_DIR, SCRATCH_DIR)
+
+    async def _dedupe(scratch_path: str) -> str:
+        printc(f"Deduplicating: {scratch_path} ..\n", "bright_yellow")
+        page_path = await asyncio.to_thread(
+            dedupe_image, scratch_path, IMAGE_DIR, SCRATCH_DIR
+        )
         page_file = slash_nix(page_path).removeprefix(slash_nix(IMAGE_DIR)).lstrip("/")
-        page_files.append(page_file)
         cleanup(scratch_path)
+        return page_file
+
+    page_files: list[str] = await asyncio.gather(*[_dedupe(p) for p in downloaded])
 
     results = await asyncio.gather(
         *[update_page(p["id"], {"page_file": pf}) for p, pf in zip(pages, page_files)]
