@@ -1,8 +1,10 @@
 import asyncio
 import httpx
+import random
 from typing import Any, Literal
 from core.exceptions import NHaikuError
 from core.api_schema import CdnConfig, GalleryDetail, GalleryListItem, GalleryPage
+from core.constants import OS_STRINGS, UA_STRINGS
 from toolbox.utils import DEBUG, get_env, printc, varDump, debug
 
 
@@ -30,6 +32,20 @@ _HEADERS = {
     "Authorization": f"Key {_NH_KEY}",
     "User-Agent": "nhaiku/0.1.1 (https://github.com/valcrist/nhaiku)",
 }
+
+
+# Not recommended! Use _HEADERS (above) so they can identify traffic.
+# But it's here if you really need it.
+# Replace "headers=_HEADERS" with "headers=random_ua_header()" in api_get
+def random_ua_header() -> dict[str, str]:
+    ua_str = random.choice(UA_STRINGS)
+    return {
+        "User-Agent": (
+            f"Mozilla/5.0 ({random.choice(OS_STRINGS)}; {ua_str}"
+            if ua_str.startswith("rv:")
+            else f"Mozilla/5.0 ({random.choice(OS_STRINGS)}) {ua_str}"
+        )
+    }
 
 
 def print_query(
