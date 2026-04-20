@@ -1,4 +1,4 @@
-<h1 align="center">NHaiku</h1>
+<h1 align="center">NHaiku 🌸</h1>
 
 <p align="center">
   <strong>Self-hosted nhentai, cached as you browse</strong>
