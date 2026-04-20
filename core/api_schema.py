@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class GalleryListItem(BaseModel):
@@ -15,9 +15,16 @@ class GalleryListItem(BaseModel):
 
 
 class GalleryPage(BaseModel):
-    result: list[GalleryListItem]
     curr_page: int
     num_pages: int
+    result: list[GalleryListItem]
+    per_page: int = 25
+    total: int | None = None
+
+    @field_validator("result", mode="after")
+    @classmethod
+    def filter_blacklisted(cls, v: list[GalleryListItem]) -> list[GalleryListItem]:
+        return [item for item in v if not item.blacklisted]
 
 
 class GalleryTitle(BaseModel):
