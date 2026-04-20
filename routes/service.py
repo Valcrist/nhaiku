@@ -8,7 +8,7 @@ router = APIRouter(
 )
 
 
-@router.get("/thumb_servers")
+@router.get("/thumb_servers", response_model=list[str])
 async def thumb_servers():
     data = await get_cdn()
     return data["thumb_servers"]
