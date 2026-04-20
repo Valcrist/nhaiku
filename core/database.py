@@ -1,6 +1,18 @@
-from typing import Any
+import re
+from typing import Any, Literal
 from collections.abc import Callable, Coroutine
-from sqlalchemy import delete, insert, update, select, or_
+from sqlalchemy import (
+    delete,
+    insert,
+    update,
+    select,
+    or_,
+    and_,
+    func,
+    exists,
+    asc,
+    desc,
+)
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -9,17 +21,24 @@ from db.model.manga import Manga, Page, Tag
 from db.relationships.manga import manga_tag
 from db.schema.manga import MangaResponse, MangaUpdate, PageUpdate
 from db.session import AsyncSessionLocal
+from core.api_schema import GalleryListItem, GalleryPage
 from toolbox.utils import DEBUG, printc, debug, warn
 
 
 type _Runner[T] = Callable[[AsyncSession], Coroutine[Any, Any, T]]
+
+LocalSearchSort = Literal["title", "date", "pages", "votes"]
+
+_TYPED_SLUG_RE = re.compile(r'^(\w+):"([^"]+)"$')
 
 
 def model_to_dict(obj: Base) -> dict[str, Any]:
     return {col.name: getattr(obj, col.name) for col in obj.__table__.columns}
 
 
-def print_op(op: str, label: str, fields: dict[str, Any], lvl: int = 3) -> None:
+def print_op(
+    op: str, label: str, fields: dict[str, Any] | list[Any], lvl: int = 3
+) -> None:
     if DEBUG < lvl:
         return
     printc(f"{op}: {label} ..", "bright_cyan", "blue")
@@ -180,5 +199,114 @@ async def get_missing_pages(
             )
         )
         return [model_to_dict(row) for row in result.scalars().all()]
+
+    return await _run_with_session(_run, session)
+
+
+def _parse_term(term: str) -> tuple[bool, Any]:
+    negated = term.startswith("-")
+    bare = term.lstrip("-")
+
+    m = _TYPED_SLUG_RE.match(bare)
+    if m:
+        tag_type, tag_slug = m.group(1), m.group(2)
+        return negated, exists(
+            select(manga_tag.c.manga_id).where(
+                and_(
+                    manga_tag.c.manga_id == Manga.id,
+                    manga_tag.c.tag_type == tag_type,
+                    manga_tag.c.tag_slug == tag_slug,
+                )
+            )
+        )
+
+    if "-" in bare and " " not in bare:
+        return negated, exists(
+            select(manga_tag.c.manga_id).where(
+                and_(
+                    manga_tag.c.manga_id == Manga.id,
+                    manga_tag.c.tag_slug == bare,
+                )
+            )
+        )
+
+    tag_name_cond = exists(
+        select(manga_tag.c.manga_id).where(
+            and_(
+                manga_tag.c.manga_id == Manga.id,
+                manga_tag.c.tag_id == Tag.id,
+                Tag.name.ilike(f"%{bare}%"),
+            )
+        )
+    )
+    return negated, or_(Manga.title_full.ilike(f"%{bare}%"), tag_name_cond)
+
+
+async def search_manga(
+    query: list[str],
+    sort: LocalSearchSort,
+    page: int,
+    per_page: int,
+    session: AsyncSession | None = None,
+) -> GalleryPage:
+    print_op("Search", "Manga", query, lvl=2)
+
+    async def _run(s: AsyncSession) -> GalleryPage:
+        filters: list[Any] = [Manga.nuked == False]
+        for raw in query:
+            stripped = raw.strip()
+            if not stripped:
+                continue
+            negated, cond = _parse_term(stripped)
+            filters.append(~cond if negated else cond)
+
+        where_clause = and_(*filters)
+
+        total: int = (
+            await s.execute(select(func.count()).select_from(Manga).where(where_clause))
+        ).scalar_one()
+
+        if sort == "title":
+            order_by = [asc(Manga.title_full)]
+        elif sort == "date":
+            order_by = [desc(Manga.created_at)]
+        elif sort == "pages":
+            order_by = [desc(Manga.pages), asc(Manga.title_full)]
+        else:  # votes
+            order_by = [desc(Manga.votes), asc(Manga.title_full)]
+
+        rows = (
+            (
+                await s.execute(
+                    select(Manga)
+                    .where(where_clause)
+                    .order_by(*order_by)
+                    .limit(per_page)
+                    .offset((page - 1) * per_page)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        items = [
+            GalleryListItem(
+                id=m.id,
+                media_id=m.media_id,
+                english_title=m.title_full,
+                japanese_title=m.title_jp,
+                thumbnail=m.thumbnail_file or m.thumbnail or "",
+                num_pages=m.pages,
+            )
+            for m in rows
+        ]
+
+        return GalleryPage(
+            curr_page=page,
+            num_pages=(total + per_page - 1) // per_page if per_page else 0,
+            result=items,
+            per_page=per_page,
+            total=total,
+        )
 
     return await _run_with_session(_run, session)

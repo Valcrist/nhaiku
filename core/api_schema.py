@@ -7,19 +7,16 @@ class GalleryListItem(BaseModel):
     english_title: str
     japanese_title: str | None = None
     thumbnail: str
-    thumbnail_width: int
-    thumbnail_height: int
     num_pages: int = 0
-    tag_ids: list[int] = []
     blacklisted: bool = False
 
 
 class GalleryPage(BaseModel):
     curr_page: int
     num_pages: int
-    result: list[GalleryListItem]
     per_page: int = 25
     total: int | None = None
+    result: list[GalleryListItem]
 
     @field_validator("result", mode="after")
     @classmethod
