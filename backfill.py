@@ -1,10 +1,10 @@
 import asyncio
 from core.indexer import proc_manga
 from core.database import update_manga
-from toolbox.utils import debug, warn, json2var, printc
+from toolbox.utils import warn, json2var, printc
 
 
-REINDEX = True
+REINDEX = False
 
 
 async def backfill():
@@ -14,10 +14,11 @@ async def backfill():
             id = int(manga.get("id") or 0)
             title = manga.get("title", "")
             votes = manga.get("votes", 0)
-            if not id or not votes:
+            if not id:
                 continue
-            manga = await proc_manga(id, reindex=REINDEX)
-            await update_manga(id, {"votes": votes})
+            await proc_manga(id, reindex=REINDEX)
+            if votes:
+                await update_manga(id, {"votes": votes})
             printc(f"Completed backfill for manga: [{id}] {title}", "bright_magenta")
         except Exception as e:
             warn(f"Error backfilling manga: {manga}\n\n{e}")
