@@ -324,13 +324,13 @@ async def search_manga(
         ).scalar_one()
 
         if sort == "title":
-            order_by = [asc(Manga.title_full)]
+            order_by = [asc(Manga.title)]
         elif sort == "date":
             order_by = [desc(Manga.created_at)]
         elif sort == "pages":
-            order_by = [desc(Manga.pages), asc(Manga.title_full)]
+            order_by = [desc(Manga.pages), asc(Manga.title)]
         else:  # votes
-            order_by = [desc(Manga.votes), asc(Manga.title_full)]
+            order_by = [desc(Manga.votes), asc(Manga.title)]
 
         rows = (
             (
@@ -350,7 +350,7 @@ async def search_manga(
             GalleryListItem(
                 id=m.id,
                 media_id=m.media_id,
-                english_title=m.title_full,
+                english_title=m.title,
                 japanese_title=m.title_jp,
                 thumbnail=m.thumbnail_file or m.thumbnail or "",
                 num_pages=m.pages,
