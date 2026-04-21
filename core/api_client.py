@@ -133,21 +133,21 @@ async def search_galleries(
     for t in blacklist:
         if t not in query_bases:
             terms.setdefault(f"-{t}", None)
-    debug(terms, lvl=2)
+    debug(terms, lvl=3)
     full_query = " ".join(terms)
-    debug(full_query, lvl=2)
+    debug(full_query, lvl=3)
     data = await api_get(
         "/search",
         params={"query": full_query.strip(), "sort": sort, "page": page},
     )
-    debug(data, lvl=2)
+    debug(data, lvl=3)
     return GalleryPage.model_validate({**data, "curr_page": page}).model_dump()
 
 
 async def get_gallery(gallery_id: int) -> dict[str, Any]:
     data = await api_get(f"/galleries/{gallery_id}")
     resp = GalleryDetail.model_validate(data).model_dump()
-    debug(resp, lvl=2)
+    debug(resp, lvl=3)
     return resp
 
 
