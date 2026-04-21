@@ -33,7 +33,13 @@ app.include_router(service.router)
 
 
 if ENV == "DEV" or LOG_REQUESTS or LOG_RESPONSE:
-    logger_middleware(app, ENV, LOG_REQUESTS, LOG_RESPONSE)
+    logger_middleware(
+        app,
+        ENV,
+        LOG_REQUESTS,
+        LOG_RESPONSE,
+        skip_paths=["/cover/*", "/thumb/*", "/image/*"],
+    )
 
 
 init_scalar_docs(

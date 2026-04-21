@@ -246,7 +246,7 @@ async def search_manga(
     query: list[str],
     sort: LocalSearchSort,
     page: int,
-    per_page: int,
+    per_page: int = 100,
     session: AsyncSession | None = None,
 ) -> GalleryPage:
     print_op("Search", "Manga", query, lvl=2)

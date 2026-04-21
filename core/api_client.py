@@ -8,7 +8,7 @@ from core.constants import OS_STRINGS, UA_STRINGS
 from toolbox.utils import DEBUG, get_env, printc, varDump, debug
 
 
-SearchSort = Literal[
+RemoteSearchSort = Literal[
     "date", "popular", "popular-today", "popular-week", "popular-month"
 ]
 
@@ -100,7 +100,7 @@ async def get_galleries(page: int = 1, per_page: int = 100) -> dict[str, Any]:
 
 async def search_galleries(
     query: list[str] = [],
-    sort: SearchSort = "date",
+    sort: RemoteSearchSort = "date",
     page: int = 1,
     whitelist: list[str] = WHITELIST,
     blacklist: list[str] = BLACKLIST,
