@@ -37,12 +37,13 @@ def model_to_dict(obj: Base) -> dict[str, Any]:
 
 
 def print_op(
-    op: str, label: str, fields: dict[str, Any] | list[Any], lvl: int = 3
+    op: str, label: str, fields: dict[str, Any] | list[Any] | None = None, lvl: int = 3
 ) -> None:
     if DEBUG < lvl:
         return
     printc(f"{op}: {label} ..", "bright_cyan", "blue")
-    debug(fields, f"{label} {op.lower()}", lvl=lvl)
+    if fields:
+        debug(fields, f"{label} {op.lower()}", lvl=lvl)
 
 
 async def _run_with_session[T](fn: _Runner[T], session: AsyncSession | None) -> T:
@@ -77,6 +78,7 @@ async def fetch_art(id: int, session: AsyncSession | None = None) -> dict[str, A
 
 async def query_manga(id: int, session: AsyncSession | None = None) -> dict[str, Any]:
     async def _run(s: AsyncSession) -> dict[str, Any]:
+        print_op("Query", f"Manga [{id}]", lvl=2)
         result = await s.execute(
             select(Manga)
             .where(Manga.id == id)
