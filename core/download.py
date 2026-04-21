@@ -151,9 +151,7 @@ def cleanup(path: str) -> None:
 async def dedupe_page(img_path: str) -> str:
     printc(f"Deduplicating: {img_path} ..", "bright_blue")
     page_path = await asyncio.to_thread(dedupe_image, img_path, IMAGE_DIR, SCRATCH_DIR)
-    page_file = slash_nix(page_path).removeprefix(slash_nix(IMAGE_DIR)).lstrip("/")
-    cleanup(img_path)
-    return page_file
+    return slash_nix(page_path).removeprefix(slash_nix(IMAGE_DIR)).lstrip("/")
 
 
 async def download_pages(
@@ -190,9 +188,12 @@ async def download_pages(
                 page["id"], {"page_file": page_file}, session=session
             )
 
-    return list(
+    results = list(
         await asyncio.gather(*[_process(p, s) for p, s in zip(pages, downloaded)])
     )
+    for scratch_path in downloaded:
+        cleanup(scratch_path)
+    return results
 
 
 async def download_art(
