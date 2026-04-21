@@ -13,6 +13,7 @@ from sqlalchemy import (
     asc,
     desc,
 )
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError, OperationalError
@@ -127,21 +128,28 @@ async def save_manga(
 ) -> dict[str, Any]:
     async def _run(s: AsyncSession) -> dict[str, Any]:
         print_op("Save", f"[{data['id']}] {data['title']['pretty']}", data)
-        manga = await s.merge(
-            Manga(
-                id=data["id"],
-                media_id=data["media_id"],
-                title=data["title"]["pretty"],
-                title_full=data["title"]["english"],
-                title_jp=data["title"].get("japanese"),
-                cover=(data.get("cover") or {}).get("path"),
-                thumbnail=(data.get("thumbnail") or {}).get("path"),
-                scanlator=data.get("scanlator"),
-                upload_date=data.get("upload_date"),
-                pages=data.get("num_pages", 0),
-                faves=data.get("num_favorites", 0),
+        manga_values = dict(
+            id=data["id"],
+            media_id=data["media_id"],
+            title=data["title"]["pretty"],
+            title_full=data["title"]["english"],
+            title_jp=data["title"].get("japanese"),
+            cover=(data.get("cover") or {}).get("path"),
+            thumbnail=(data.get("thumbnail") or {}).get("path"),
+            scanlator=data.get("scanlator"),
+            upload_date=data.get("upload_date"),
+            pages=data.get("num_pages", 0),
+            faves=data.get("num_favorites", 0),
+        )
+        await s.execute(
+            pg_insert(Manga)
+            .values(**manga_values)
+            .on_conflict_do_update(
+                index_elements=["id"],
+                set_={k: v for k, v in manga_values.items() if k != "id"},
             )
         )
+        manga = await s.get(Manga, data["id"])
         for t in data.get("tags", []):
             await s.merge(
                 Tag(
