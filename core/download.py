@@ -174,7 +174,17 @@ async def download_pages(
     sem = asyncio.Semaphore(CONCURRENT_DB)
 
     async def _process(page: dict[str, Any], scratch_path: str) -> dict[str, Any]:
-        page_file = await dedupe_page(scratch_path)
+        try:
+            page_file = await dedupe_page(scratch_path)
+        except Exception as exc:
+            await log_error(
+                location="download.download_pages",
+                remark=f"Failed to dedupe/save page {page['id']} from {scratch_path}",
+                error_type=ErrorType.file_error,
+                exc=exc,
+                manga_id=manga_id,
+            )
+            raise
         async with sem:
             return await update_page(
                 page["id"], {"page_file": page_file}, session=session
@@ -209,7 +219,7 @@ async def download_art(
     except Exception as exc:
         await log_error(
             location="download.download_art",
-            remark=f"Failed to save {kind} for manga {manga['id']} from {url}",
+            remark=f"Failed to dedupe/save {kind} for manga {manga['id']} from {url}",
             error_type=ErrorType.file_error,
             exc=exc,
             manga_id=manga["id"],
