@@ -3,6 +3,8 @@ from typing import Any
 from core.database import query_manga, save_manga
 from core.api_client import get_gallery, NHaikuError
 from core.download import download_art, download_pages
+from core.error_logger import log_error
+from db.global_enums import ErrorType
 from toolbox.utils import err, debug, hr, printc
 
 
@@ -26,8 +28,21 @@ async def proc_manga(id: int, reindex: bool = False) -> dict[str, Any]:
             await index_manga(int(id))
             manga = await query_manga(int(id))
         return manga
-    except NHaikuError:
-        pass
+    except NHaikuError as e:
+        await log_error(
+            location="indexer.proc_manga",
+            remark=f"API error while processing manga {id}",
+            error_type=ErrorType.api_error,
+            exc=e,
+            manga_id=id,
+        )
     except Exception as e:
         err(f"Failed to get manga {id}: {e}")
+        await log_error(
+            location="indexer.proc_manga",
+            remark=f"Unexpected error while processing manga {id}",
+            error_type=ErrorType.unknown,
+            exc=e,
+            manga_id=id,
+        )
     return {}

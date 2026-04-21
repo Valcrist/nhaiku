@@ -4,8 +4,10 @@ from typing import Any
 from datetime import datetime
 from imgroyale import dedupe_image
 from sqlalchemy.ext.asyncio import AsyncSession
+from db.global_enums import ErrorType
 from core.api_client import get_cdn
 from core.database import update_manga, update_page, get_missing_pages, fetch_art
+from core.error_logger import log_error
 from core.constants import SCRATCH_DIR, COVER_DIR, THUMB_DIR, IMAGE_DIR
 from toolbox.date import utc_now, time_delta
 from toolbox.fs import (
@@ -81,6 +83,12 @@ async def _fetch_file(
                     )
                     await asyncio.sleep(delay)
                     continue
+                await log_error(
+                    location="download._fetch_file",
+                    remark=f"Connection timeout downloading {url} after {retries} retries",
+                    error_type=ErrorType.api_down,
+                    exc=exc,
+                )
                 raise
             except httpx.HTTPStatusError as exc:
                 code = exc.response.status_code
@@ -93,6 +101,20 @@ async def _fetch_file(
                     )
                     await asyncio.sleep(delay)
                     continue
+                await log_error(
+                    location="download._fetch_file",
+                    remark=f"HTTP {code} downloading {url} after {retries} retries",
+                    error_type=ErrorType.file_error,
+                    exc=exc,
+                )
+                raise
+            except Exception as exc:
+                await log_error(
+                    location="download._fetch_file",
+                    remark=f"Unexpected error downloading {url}",
+                    error_type=ErrorType.unknown,
+                    exc=exc,
+                )
                 raise
     return dest  # unreachable, satisfies type checker
 
@@ -110,6 +132,13 @@ async def download_files(
                 ]
     except* httpx.HTTPError as eg:
         eg.add_note(f"Failed to download {len(files)} file(s)")
+        for exc in eg.exceptions:
+            await log_error(
+                location="download.download_files",
+                remark=f"Failed to download batch of {len(files)} file(s)",
+                error_type=ErrorType.file_error,
+                exc=exc,
+            )
         raise
     return [t.result() for t in tasks]
 
@@ -175,7 +204,17 @@ async def download_art(
     scratch = join_path(SCRATCH_DIR, f"{media_id}_{basename(manga[key])}")
     (path,) = await download_files([(url, scratch)])
     printc(f"Deduplicating {kind}: {path} ..", "bright_blue")
-    result = dedupe_image(path, dest_dir, SCRATCH_DIR)
+    try:
+        result = dedupe_image(path, dest_dir, SCRATCH_DIR)
+    except Exception as exc:
+        await log_error(
+            location="download.download_art",
+            remark=f"Failed to save {kind} for manga {manga['id']} from {url}",
+            error_type=ErrorType.file_error,
+            exc=exc,
+            manga_id=manga["id"],
+        )
+        raise
     art_file = slash_nix(result).removeprefix(slash_nix(dest_dir)).lstrip("/")
     cleanup(path)
     await update_manga(manga["id"], {field: art_file}, session=session)

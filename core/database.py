@@ -13,15 +13,17 @@ from sqlalchemy import (
     asc,
     desc,
 )
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError, OperationalError
 from db.common import Base
+from db.global_enums import ErrorType
 from db.model.manga import Manga, Page, Tag
 from db.relationships.manga import manga_tag
 from db.schema.manga import MangaResponse, MangaUpdate, PageUpdate
 from db.session import AsyncSessionLocal
 from core.api_schema import GalleryListItem, GalleryPage
+from core.error_logger import log_error
 from toolbox.utils import DEBUG, printc, debug, warn
 
 
@@ -47,11 +49,39 @@ def print_op(
 
 
 async def _run_with_session[T](fn: _Runner[T], session: AsyncSession | None) -> T:
-    if session is not None:
-        return await fn(session)
-    async with AsyncSessionLocal() as s:
-        async with s.begin():
-            return await fn(s)
+    async def _execute() -> T:
+        if session is not None:
+            return await fn(session)
+        async with AsyncSessionLocal() as s:
+            async with s.begin():
+                return await fn(s)
+
+    try:
+        return await _execute()
+    except OperationalError as exc:
+        await log_error(
+            location="database._run_with_session",
+            remark="Database connection failed",
+            error_type=ErrorType.db_down,
+            exc=exc,
+        )
+        raise
+    except SQLAlchemyError as exc:
+        await log_error(
+            location="database._run_with_session",
+            remark="Database query error",
+            error_type=ErrorType.db_error,
+            exc=exc,
+        )
+        raise
+    except Exception as exc:
+        await log_error(
+            location="database._run_with_session",
+            remark="Unexpected error during database operation",
+            error_type=ErrorType.unknown,
+            exc=exc,
+        )
+        raise
 
 
 async def fetch_one(stmt: Any, session: AsyncSession | None = None) -> dict[str, Any]:
@@ -186,6 +216,23 @@ async def update_page(
         await s.execute(update(Page).where(Page.id == id).values(**fields))
         row = await s.get(Page, id)
         return model_to_dict(row) if row is not None else {}
+
+    return await _run_with_session(_run, session)
+
+
+async def adjust_votes(
+    manga_id: int, delta: int, session: AsyncSession | None = None
+) -> int | None:
+    async def _run(s: AsyncSession) -> int | None:
+        row = await s.execute(select(Manga.votes).where(Manga.id == manga_id))
+        current = row.scalar_one_or_none()
+        if current is None:
+            return None
+        new_votes = current + delta
+        await s.execute(
+            update(Manga).where(Manga.id == manga_id).values(votes=new_votes)
+        )
+        return new_votes
 
     return await _run_with_session(_run, session)
 

@@ -5,6 +5,8 @@ from typing import Any, Literal
 from core.exceptions import NHaikuError
 from core.api_schema import CdnConfig, GalleryDetail, GalleryListItem, GalleryPage
 from core.constants import OS_STRINGS, UA_STRINGS
+from core.error_logger import log_error
+from db.global_enums import ErrorType
 from toolbox.utils import DEBUG, get_env, printc, varDump, debug
 
 
@@ -80,10 +82,28 @@ async def api_get(
                     )
                     await asyncio.sleep(delay)
                     continue
+                await log_error(
+                    location="api_client.api_get",
+                    remark=f"Upstream API returned HTTP {code} for {path}",
+                    error_type=ErrorType.api_error,
+                    exc=exc,
+                )
                 raise NHaikuError(f"Upstream API error {code} for {path}:\n\n{exc}")
             except httpx.RequestError as exc:
+                await log_error(
+                    location="api_client.api_get",
+                    remark=f"Connection/request failed for {path}",
+                    error_type=ErrorType.api_down,
+                    exc=exc,
+                )
                 raise NHaikuError(f"Request failed for {path}: {exc}")
             except Exception as exc:
+                await log_error(
+                    location="api_client.api_get",
+                    remark=f"Unexpected error for {path}",
+                    error_type=ErrorType.unknown,
+                    exc=exc,
+                )
                 raise NHaikuError(f"Unexpected error for {path}: {exc}")
 
 
