@@ -142,8 +142,9 @@ async def fetch_same_tag(
 
 async def fetch_similar_titles(
     title: str,
+    exclude_id: int,
     limit: int = 20,
-    threshold: float = 0.3,
+    threshold: float = 0.35,
     session: AsyncSession | None = None,
 ) -> list[MangaListItem]:
     async def _run(s: AsyncSession) -> list[MangaListItem]:
@@ -151,7 +152,9 @@ async def fetch_similar_titles(
         rows = (
             await s.execute(
                 select(Manga.id, Manga.title, Manga.thumbnail_file, Manga.pages)
-                .where(Manga.nuked == False, similarity > threshold)
+                .where(
+                    Manga.nuked == False, Manga.id != exclude_id, similarity > threshold
+                )
                 .order_by(similarity.desc())
                 .limit(limit)
             )
@@ -180,7 +183,9 @@ async def query_manga(id: int, session: AsyncSession | None = None) -> dict[str,
         response = MangaResponse.model_validate(manga)
         response.same_artist = await fetch_same_tag(manga, "artist", s)
         response.same_group = await fetch_same_tag(manga, "group", s)
-        response.similar_titles = await fetch_similar_titles(manga.title, session=s)
+        response.similar_titles = await fetch_similar_titles(
+            manga.title, exclude_id=manga.id, session=s
+        )
         return response.model_dump()
 
     return await _run_with_session(_run, session)
