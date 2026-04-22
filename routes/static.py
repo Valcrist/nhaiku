@@ -10,6 +10,7 @@ router = APIRouter(tags=["static"])
 
 mimetypes.add_type("image/webp", ".webp")
 mimetypes.add_type("image/avif", ".avif")
+_CACHE_HEADERS = {"Cache-Control": "public, max-age=31536000, immutable"}
 
 
 def _resolve_safe(base: Path | str, rel: str) -> Path:
@@ -31,14 +32,14 @@ async def favicon():
 
 @router.get("/cover/{path:path}")
 async def cover(path: str):
-    return FileResponse(_resolve_safe(COVER_DIR, path))
+    return FileResponse(_resolve_safe(COVER_DIR, path), headers=_CACHE_HEADERS)
 
 
 @router.get("/thumb/{path:path}")
 async def thumb(path: str):
-    return FileResponse(_resolve_safe(THUMB_DIR, path))
+    return FileResponse(_resolve_safe(THUMB_DIR, path), headers=_CACHE_HEADERS)
 
 
 @router.get("/image/{path:path}")
 async def image(path: str):
-    return FileResponse(_resolve_safe(IMAGE_DIR, path))
+    return FileResponse(_resolve_safe(IMAGE_DIR, path), headers=_CACHE_HEADERS)
