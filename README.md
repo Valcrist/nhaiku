@@ -34,4 +34,15 @@ Perceptually identical images across re-uploaded or duplicate galleries are auto
 - **Image optimization**: Efficient storage with perceptual hashing to merge duplicate images
 - **Smart deduplication**: Keeps best version based on resolution and PSNR
 - **Tag management**: Automatic tag extraction and organization
+- **Fuzzy title search**: Find related titles with slight variations using PostgreSQL trigram similarity
+
+## Requirements
+
+### PostgreSQL Extensions
+
+The following extensions must be enabled on the database before running:
+
+```sql
+CREATE EXTENSION pg_trgm;  -- fuzzy title search via trigram similarity
+```
 

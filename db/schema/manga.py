@@ -155,6 +155,13 @@ class PageResponse(BaseModel):
     page_file: Optional[str] = None
 
 
+class MangaListItem(BaseModel):
+    id: int
+    title: str
+    thumbnail: Optional[str] = None
+    pages: int
+
+
 class MangaResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -169,6 +176,9 @@ class MangaResponse(BaseModel):
     votes: int
     tags: list[TagResponse] = []
     page_list: list[PageResponse] = []
+    same_artist: list[MangaListItem] = []
+    same_group: list[MangaListItem] = []
+    similar_titles: list[MangaListItem] = []
 
     @field_validator("tags", mode="after")
     @classmethod

@@ -21,7 +21,7 @@ from db.common import Base
 from db.global_enums import ErrorType
 from db.model.manga import Manga, Page, Tag
 from db.relationships.manga import manga_tag
-from db.schema.manga import MangaResponse, MangaUpdate, PageUpdate
+from db.schema.manga import MangaResponse, MangaListItem, MangaUpdate, PageUpdate
 from db.session import AsyncSessionLocal
 from core.api_schema import GalleryListItem, GalleryPage
 from core.error_logger import log_error
@@ -107,6 +107,65 @@ async def fetch_art(id: int, session: AsyncSession | None = None) -> dict[str, A
     return await _run_with_session(_run, session)
 
 
+async def fetch_same_tag(
+    manga: Manga, tag_type: str, session: AsyncSession | None = None
+) -> list[MangaListItem]:
+    async def _run(s: AsyncSession) -> dict[str, Any]:
+        slugs = [t.slug for t in manga.tags if t.type == tag_type]
+        debug(slugs)
+        if not slugs:
+            return []
+        rows = (
+            await s.execute(
+                select(Manga.id, Manga.title, Manga.thumbnail_file, Manga.pages)
+                .join(manga_tag, manga_tag.c.manga_id == Manga.id)
+                .where(
+                    manga_tag.c.tag_type == tag_type,
+                    manga_tag.c.tag_slug.in_(slugs),
+                    Manga.id != manga.id,
+                    Manga.nuked == False,
+                )
+                .order_by(Manga.title.asc())
+                .distinct()
+            )
+        ).all()
+        debug(rows)
+        return [
+            MangaListItem(
+                id=r.id, title=r.title, thumbnail=r.thumbnail_file, pages=r.pages
+            )
+            for r in rows
+        ]
+
+    return await _run_with_session(_run, session)
+
+
+async def fetch_similar_titles(
+    title: str,
+    limit: int = 20,
+    threshold: float = 0.3,
+    session: AsyncSession | None = None,
+) -> list[MangaListItem]:
+    async def _run(s: AsyncSession) -> list[MangaListItem]:
+        similarity = func.similarity(Manga.title, title)
+        rows = (
+            await s.execute(
+                select(Manga.id, Manga.title, Manga.thumbnail_file, Manga.pages)
+                .where(Manga.nuked == False, similarity > threshold)
+                .order_by(similarity.desc())
+                .limit(limit)
+            )
+        ).all()
+        return [
+            MangaListItem(
+                id=r.id, title=r.title, thumbnail=r.thumbnail_file, pages=r.pages
+            )
+            for r in rows
+        ]
+
+    return await _run_with_session(_run, session)
+
+
 async def query_manga(id: int, session: AsyncSession | None = None) -> dict[str, Any]:
     async def _run(s: AsyncSession) -> dict[str, Any]:
         print_op("Query", f"Manga [{id}]", lvl=2)
@@ -118,7 +177,11 @@ async def query_manga(id: int, session: AsyncSession | None = None) -> dict[str,
         manga = result.scalar_one_or_none()
         if manga is None:
             return {}
-        return MangaResponse.model_validate(manga).model_dump()
+        response = MangaResponse.model_validate(manga)
+        response.same_artist = await fetch_same_tag(manga, "artist", s)
+        response.same_group = await fetch_same_tag(manga, "group", s)
+        response.similar_titles = await fetch_similar_titles(manga.title, session=s)
+        return response.model_dump()
 
     return await _run_with_session(_run, session)
 
