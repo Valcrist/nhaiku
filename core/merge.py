@@ -9,13 +9,13 @@ from db.session import AsyncSessionLocal
 from toolbox.utils import printc, warn
 
 
-async def run_merge(threshold: int = 5) -> None:
+async def run_merge(threshold: int = 5, match_pct: float = 0.8) -> None:
     async with AsyncSessionLocal() as s:
         async with s.begin():
-            await _run_merge(s, threshold)
+            await _run_merge(s, threshold, match_pct)
 
 
-async def _run_merge(s: AsyncSession, threshold: int) -> None:
+async def _run_merge(s: AsyncSession, threshold: int, match_pct: float) -> None:
     printc("Loading pages from database...", "cyan")
     rows = (
         await s.execute(
@@ -94,7 +94,9 @@ async def _run_merge(s: AsyncSession, threshold: int) -> None:
 
     for i, component in enumerate(multi, 1):
         printc(f"Processing group {i}/{len(multi)} ({len(component)} manga)...", "cyan")
-        await _process_component(s, component, page_sets, existing_related, threshold)
+        await _process_component(
+            s, component, page_sets, existing_related, threshold, match_pct
+        )
 
     # Clear merged/related for manga no longer in any qualifying component
     multi_ids = {mid for c in multi for mid in c}
@@ -116,6 +118,7 @@ async def _process_component(
     page_sets: dict[int, set[str]],
     existing_related: dict[int, int | None],
     threshold: int,
+    match_pct: float,
 ) -> None:
     ids = list(component)
 
@@ -130,7 +133,7 @@ async def _process_component(
         if mid == master_id:
             continue
         shared = page_sets[mid] & master_pages
-        if page_sets[mid] <= master_pages and len(shared) >= threshold:
+        if len(shared) >= threshold and len(shared) / len(page_sets[mid]) >= match_pct:
             merged_ids.append(mid)
         else:
             non_merged_ids.append(mid)
