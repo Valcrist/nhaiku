@@ -344,13 +344,48 @@ async def adjust_votes(
     manga_id: int, delta: int, session: AsyncSession | None = None
 ) -> int | None:
     async def _run(s: AsyncSession) -> int | None:
-        row = await s.execute(select(Manga.votes).where(Manga.id == manga_id))
-        current = row.scalar_one_or_none()
-        if current is None:
+        row = await s.execute(
+            select(Manga.id, Manga.merged, Manga.related, Manga.votes).where(
+                Manga.id == manga_id
+            )
+        )
+        manga = row.one_or_none()
+        if manga is None:
             return None
+
+        if manga.merged is not None:
+            row = await s.execute(
+                select(Manga.id, Manga.related, Manga.votes).where(
+                    Manga.id == manga.merged
+                )
+            )
+            master = row.one_or_none()
+            if master is None:
+                return None
+            master_id, group_id, current = master.id, master.related, master.votes
+        else:
+            master_id, group_id, current = manga.id, manga.related, manga.votes
+
         new_votes = current + delta
+
+        if group_id is not None:
+            result = await s.execute(
+                select(Manga.id).where(
+                    Manga.related == group_id,
+                    Manga.merged.is_(None),
+                )
+            )
+            master_ids = [r[0] for r in result.all()]
+        else:
+            master_ids = [master_id]
+
+        result = await s.execute(select(Manga.id).where(Manga.merged.in_(master_ids)))
+        merged_ids = [r[0] for r in result.all()]
+
         await s.execute(
-            update(Manga).where(Manga.id == manga_id).values(votes=new_votes)
+            update(Manga)
+            .where(Manga.id.in_(master_ids + merged_ids))
+            .values(votes=new_votes)
         )
         return new_votes
 
