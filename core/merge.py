@@ -1,6 +1,6 @@
 from collections import defaultdict, deque
 from typing import Any
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from db.model.manga import Manga, Page
@@ -95,6 +95,17 @@ async def _run_merge(s: AsyncSession, threshold: int) -> None:
     for i, component in enumerate(multi, 1):
         printc(f"Processing group {i}/{len(multi)} ({len(component)} manga)...", "cyan")
         await _process_component(s, component, page_sets, existing_related, threshold)
+
+    # Clear merged/related for manga no longer in any qualifying component
+    multi_ids = {mid for c in multi for mid in c}
+    stale_filter = or_(Manga.merged.isnot(None), Manga.related.isnot(None))
+    if multi_ids:
+        stale_filter = and_(stale_filter, ~Manga.id.in_(multi_ids))
+    cleared = await s.execute(
+        update(Manga).where(stale_filter).values(merged=None, related=None)
+    )
+    if cleared.rowcount:
+        printc(f"Cleared {cleared.rowcount} stale merged/related record(s)", "yellow")
 
     printc("Done.", "bright_cyan")
 
