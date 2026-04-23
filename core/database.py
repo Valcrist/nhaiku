@@ -124,6 +124,7 @@ async def fetch_same_tag(
                     manga_tag.c.tag_slug.in_(slugs),
                     Manga.id != manga.id,
                     Manga.nuked == False,
+                    Manga.merged.is_(None),
                 )
                 .order_by(Manga.title.asc())
                 .distinct()
