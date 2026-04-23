@@ -179,6 +179,7 @@ class MangaResponse(BaseModel):
     same_artist: list[MangaListItem] = []
     same_group: list[MangaListItem] = []
     similar_titles: list[MangaListItem] = []
+    related_titles: list[MangaListItem] = []
 
     @field_validator("tags", mode="after")
     @classmethod

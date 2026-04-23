@@ -35,6 +35,19 @@ Perceptually identical images across re-uploaded or duplicate galleries are auto
 - **Smart deduplication**: Keeps best version based on resolution and PSNR
 - **Tag management**: Automatic tag extraction and organization
 - **Fuzzy title search**: Find related titles with slight variations using PostgreSQL trigram similarity
+- **Manga merging**: Detects duplicate/partial gallery entries by comparing cached page images and consolidates them under a single master record
+
+## Manga Merging
+
+Duplicate or partial gallery entries (re-uploads, subsets of a longer gallery) can be consolidated by running the merge script. It compares cached page images across all manga, groups entries that share enough identical pages, and promotes the most complete entry as the master.
+
+```bash
+.venv/bin/python merge.py
+# or with a custom threshold (minimum shared pages to consider a match)
+.venv/bin/python merge.py --threshold 3
+```
+
+Merged entries are hidden from search and transparently redirect to their master on lookup. Entries that share pages but aren't full duplicates are tagged as related and still appear independently. The script is safe to re-run — it recomputes all relationships incrementally and preserves existing group IDs.
 
 ## Requirements
 

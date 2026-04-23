@@ -169,6 +169,37 @@ async def fetch_similar_titles(
     return await _run_with_session(_run, session)
 
 
+async def fetch_related_titles(
+    manga_id: int,
+    group_id: int | None,
+    session: AsyncSession | None = None,
+) -> list[MangaListItem]:
+    if group_id is None:
+        return []
+
+    async def _run(s: AsyncSession) -> list[MangaListItem]:
+        rows = (
+            await s.execute(
+                select(Manga.id, Manga.title, Manga.thumbnail_file, Manga.pages)
+                .where(
+                    Manga.related == group_id,
+                    Manga.id != manga_id,
+                    Manga.merged.is_(None),
+                    Manga.nuked == False,
+                )
+                .order_by(Manga.title.asc())
+            )
+        ).all()
+        return [
+            MangaListItem(
+                id=r.id, title=r.title, thumbnail=r.thumbnail_file, pages=r.pages
+            )
+            for r in rows
+        ]
+
+    return await _run_with_session(_run, session)
+
+
 async def query_manga(id: int, session: AsyncSession | None = None) -> dict[str, Any]:
     async def _run(s: AsyncSession) -> dict[str, Any]:
         print_op("Query", f"Manga [{id}]", lvl=2)
@@ -180,11 +211,23 @@ async def query_manga(id: int, session: AsyncSession | None = None) -> dict[str,
         manga = result.scalar_one_or_none()
         if manga is None:
             return {}
+        if manga.merged is not None and manga.merged != manga.id:
+            result = await s.execute(
+                select(Manga)
+                .where(Manga.id == manga.merged)
+                .options(selectinload(Manga.tags), selectinload(Manga.page_list))
+            )
+            manga = result.scalar_one_or_none()
+            if manga is None:
+                return {}
         response = MangaResponse.model_validate(manga)
         response.same_artist = await fetch_same_tag(manga, "artist", s)
         response.same_group = await fetch_same_tag(manga, "group", s)
         response.similar_titles = await fetch_similar_titles(
             manga.title, exclude_id=manga.id, session=s
+        )
+        response.related_titles = await fetch_related_titles(
+            manga.id, manga.related, session=s
         )
         return response.model_dump()
 
@@ -377,7 +420,7 @@ async def search_manga(
     print_op("Search", "Manga", query, lvl=2)
 
     async def _run(s: AsyncSession) -> GalleryPage:
-        filters: list[Any] = [Manga.nuked == False]
+        filters: list[Any] = [Manga.nuked == False, Manga.merged.is_(None)]
         for raw in query:
             stripped = raw.strip()
             if not stripped:

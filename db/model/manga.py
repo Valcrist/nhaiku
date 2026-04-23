@@ -36,9 +36,11 @@ class Manga(Base):
     faves = Column(Integer, nullable=False, default=0, index=True)
     votes = Column(Integer, nullable=False, default=0, index=True)
     nuked = Column(Boolean, nullable=False, default=False, index=True)
+    merged = Column(Integer, ForeignKey("manga.id"), nullable=True, index=True)
+    related = Column(Integer, nullable=True, index=True)
     tags = relationship("Tag", secondary=manga_tag, backref="manga")
     page_list = relationship("Page", back_populates="manga")
-    related = relationship(
+    linked = relationship(
         "Manga",
         secondary=manga_related,
         primaryjoin=lambda: Manga.id == manga_related.c.manga_id,
