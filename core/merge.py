@@ -1,6 +1,6 @@
 from collections import defaultdict, deque
 from typing import Any
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from db.model.manga import Manga, Page
@@ -9,17 +9,30 @@ from db.session import AsyncSessionLocal
 from toolbox.utils import printc, warn
 
 
-async def run_merge(threshold: int = 5, match_pct: float = 0.8) -> None:
+async def run_merge(
+    merge_threshold: int = 8, merge_pct: float = 0.8, relationship_threshold: int = 5
+) -> None:
     async with AsyncSessionLocal() as s:
         async with s.begin():
-            await _run_merge(s, threshold, match_pct)
+            await _run_merge(s, merge_threshold, merge_pct, relationship_threshold)
 
 
-async def _run_merge(s: AsyncSession, threshold: int, match_pct: float) -> None:
+_BLANK_PAGES = {
+    "00/00/00/00/00000000.webp",
+    "ff/ff/ff/ff/ffffffff.webp",
+}
+
+
+async def _run_merge(
+    s: AsyncSession, merge_threshold: int, merge_pct: float, relationship_threshold: int
+) -> None:
     printc("Loading pages from database...", "cyan")
     rows = (
         await s.execute(
-            select(Page.manga_id, Page.page_file).where(Page.page_file.isnot(None))
+            select(Page.manga_id, Page.page_file).where(
+                Page.page_file.isnot(None),
+                Page.page_file.notin_(_BLANK_PAGES),
+            )
         )
     ).all()
 
@@ -49,12 +62,12 @@ async def _run_merge(s: AsyncSession, threshold: int, match_pct: float) -> None:
 
     adj: dict[int, set[int]] = defaultdict(set)
     for (a, b), count in shared_counts.items():
-        if count >= threshold:
+        if count >= relationship_threshold:
             adj[a].add(b)
             adj[b].add(a)
 
     printc(
-        f"Found {len(adj)} manga with at least one match (threshold={threshold})",
+        f"Found {len(adj)} manga with at least one match (relationship_threshold={relationship_threshold})",
         "cyan",
     )
 
@@ -81,21 +94,10 @@ async def _run_merge(s: AsyncSession, threshold: int, match_pct: float) -> None:
         "bright_cyan",
     )
 
-    # Load existing related values for all manga in multi-components
-    all_ids = [mid for c in multi for mid in c]
-    existing_related: dict[int, int | None] = {}
-    if all_ids:
-        related_rows = (
-            await s.execute(
-                select(Manga.id, Manga.related).where(Manga.id.in_(all_ids))
-            )
-        ).all()
-        existing_related = {r.id: r.related for r in related_rows}
-
     for i, component in enumerate(multi, 1):
         printc(f"Processing group {i}/{len(multi)} ({len(component)} manga)...", "cyan")
         await _process_component(
-            s, component, page_sets, existing_related, threshold, match_pct
+            s, component, page_sets, merge_threshold, merge_pct, relationship_threshold
         )
 
     # Clear merged/related for manga no longer in any qualifying component
@@ -109,6 +111,36 @@ async def _run_merge(s: AsyncSession, threshold: int, match_pct: float) -> None:
     if cleared.rowcount:
         printc(f"Cleared {cleared.rowcount} stale merged/related record(s)", "yellow")
 
+    merge_rows = (
+        await s.execute(
+            select(Manga.merged, func.count().label("n"))
+            .where(Manga.merged.isnot(None))
+            .group_by(Manga.merged)
+            .order_by(func.count().desc())
+        )
+    ).all()
+
+    related_rows = (
+        await s.execute(
+            select(Manga.related, func.count().label("n"))
+            .where(Manga.related.isnot(None), Manga.merged.is_(None))
+            .group_by(Manga.related)
+            .order_by(func.count().desc())
+        )
+    ).all()
+
+    printc("\nMerge groups:", "bright_cyan")
+    for row in merge_rows:
+        printc(f"  master={row.merged}: {row.n+1} merged", "cyan")
+    if not merge_rows:
+        printc("  (none)", "cyan")
+
+    printc("Related groups:", "bright_cyan")
+    for row in related_rows:
+        printc(f"  group={row.related}: {row.n} members", "cyan")
+    if not related_rows:
+        printc("  (none)", "cyan")
+
     printc("Done.", "bright_cyan")
 
 
@@ -116,9 +148,9 @@ async def _process_component(
     s: AsyncSession,
     component: set[int],
     page_sets: dict[int, set[str]],
-    existing_related: dict[int, int | None],
-    threshold: int,
-    match_pct: float,
+    merge_threshold: int,
+    merge_pct: float,
+    relationship_threshold: int,
 ) -> None:
     ids = list(component)
 
@@ -129,23 +161,23 @@ async def _process_component(
     # Determine which manga merge into master
     merged_ids: list[int] = []
     non_merged_ids: list[int] = []
+    unclassified_ids: list[int] = []
     for mid in ids:
         if mid == master_id:
             continue
         shared = page_sets[mid] & master_pages
-        if len(shared) >= threshold and len(shared) / len(page_sets[mid]) >= match_pct:
+        if (
+            len(shared) >= merge_threshold
+            and len(shared) / len(page_sets[mid]) >= merge_pct
+        ):
             merged_ids.append(mid)
-        else:
+        elif len(shared) >= relationship_threshold:
             non_merged_ids.append(mid)
+        else:
+            unclassified_ids.append(mid)
 
-    # Assign related group id — stable: reuse any existing value, else min(non-merged)
     non_merged_members = [master_id] + non_merged_ids
-    existing = [
-        existing_related.get(mid)
-        for mid in non_merged_members
-        if existing_related.get(mid) is not None
-    ]
-    group_id = min(existing) if existing else min(non_merged_members)
+    group_id = min(non_merged_members)
 
     printc(
         f"  Group {group_id}: master={master_id} merge={merged_ids} related={non_merged_ids}",
@@ -161,11 +193,24 @@ async def _process_component(
         )
 
     # Update non-merged (master + others): merged=NULL, related=group_id
-    if non_merged_members:
+    # Only set related if there are actual companions — a lone master needs no group id
+    if len(non_merged_members) > 1:
         await s.execute(
             update(Manga)
             .where(Manga.id.in_(non_merged_members))
             .values(merged=None, related=group_id)
+        )
+    else:
+        await s.execute(
+            update(Manga).where(Manga.id == master_id).values(merged=None, related=None)
+        )
+
+    # Clear manga that are transitively connected but not directly similar to master
+    if unclassified_ids:
+        await s.execute(
+            update(Manga)
+            .where(Manga.id.in_(unclassified_ids))
+            .values(merged=None, related=None)
         )
 
     # Merge tags from merged manga into master

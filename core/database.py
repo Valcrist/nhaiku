@@ -154,7 +154,10 @@ async def fetch_similar_titles(
             await s.execute(
                 select(Manga.id, Manga.title, Manga.thumbnail_file, Manga.pages)
                 .where(
-                    Manga.nuked == False, Manga.id != exclude_id, similarity > threshold
+                    Manga.nuked == False,
+                    Manga.merged.is_(None),
+                    Manga.id != exclude_id,
+                    similarity > threshold,
                 )
                 .order_by(similarity.desc())
                 .limit(limit)
